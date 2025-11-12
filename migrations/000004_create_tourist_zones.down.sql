@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS tourist_zones CASCADE;
