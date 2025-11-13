@@ -34,4 +34,19 @@ type EnvironmentRepository interface {
 
 	// GetGreenSpacesTile возвращает MVT tile с зелеными зонами
 	GetGreenSpacesTile(ctx context.Context, z, x, y int) ([]byte, error)
+
+	// GetWaterTile возвращает MVT tile с водными объектами
+	GetWaterTile(ctx context.Context, z, x, y int) ([]byte, error)
+
+	// GetBeachesTile возвращает MVT tile с пляжами
+	GetBeachesTile(ctx context.Context, z, x, y int) ([]byte, error)
+
+	// GetNoiseSourcesTile возвращает MVT tile с источниками шума
+	GetNoiseSourcesTile(ctx context.Context, z, x, y int) ([]byte, error)
+
+	// GetTouristZonesTile возвращает MVT tile с туристическими зонами
+	GetTouristZonesTile(ctx context.Context, z, x, y int) ([]byte, error)
+
+	// GetEnvironmentRadiusTile генерирует MVT тайл со всеми экологическими объектами в радиусе от точки
+	GetEnvironmentRadiusTile(ctx context.Context, lat, lon, radiusKm float64) ([]byte, error)
 }

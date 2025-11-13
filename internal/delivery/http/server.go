@@ -23,6 +23,7 @@ type Server struct {
 	transportHandler *handler.TransportHandler
 	poiHandler       *handler.POIHandler
 	tileHandler      *handler.TileHandler
+	statsHandler     *handler.StatsHandler
 }
 
 // NewServer - создание нового HTTP сервера
@@ -33,6 +34,7 @@ func NewServer(
 	transportHandler *handler.TransportHandler,
 	poiHandler *handler.POIHandler,
 	tileHandler *handler.TileHandler,
+	statsHandler *handler.StatsHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
 		AppName:      "Location Microservice",
@@ -50,6 +52,7 @@ func NewServer(
 		transportHandler: transportHandler,
 		poiHandler:       poiHandler,
 		tileHandler:      tileHandler,
+		statsHandler:     statsHandler,
 	}
 
 	s.setupMiddlewares()
@@ -103,6 +106,16 @@ func (s *Server) setupRoutes() {
 
 	// Environment tiles
 	api.Get("/green-spaces/tiles/:z/:x/:y.pbf", s.tileHandler.GetGreenSpacesTile)
+	api.Get("/water/tiles/:z/:x/:y.pbf", s.tileHandler.GetWaterTile)
+	api.Get("/beaches/tiles/:z/:x/:y.pbf", s.tileHandler.GetBeachesTile)
+	api.Get("/noise-sources/tiles/:z/:x/:y.pbf", s.tileHandler.GetNoiseSourcesTile)
+	api.Get("/tourist-zones/tiles/:z/:x/:y.pbf", s.tileHandler.GetTouristZonesTile)
+
+	// Radius tiles - комплексный endpoint для получения всех данных в радиусе
+	api.Post("/radius/tiles.pbf", s.tileHandler.GetRadiusTiles)
+
+	// Stats
+	api.Get("/stats", s.statsHandler.GetStatistics)
 }
 
 // Start - запуск HTTP сервера

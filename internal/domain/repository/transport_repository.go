@@ -28,4 +28,13 @@ type TransportRepository interface {
 
 	// GetLinesTile генерирует MVT тайл для нескольких транспортных линий
 	GetLinesTile(ctx context.Context, lineIDs []string) ([]byte, error)
+
+	// GetStationsInRadius возвращает станции в радиусе от точки (для использования в коде)
+	GetStationsInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.TransportStation, error)
+
+	// GetLinesInRadius возвращает линии пересекающиеся с радиусом от точки (для использования в коде)
+	GetLinesInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.TransportLine, error)
+
+	// GetTransportRadiusTile генерирует MVT тайл с транспортом в радиусе от точки
+	GetTransportRadiusTile(ctx context.Context, lat, lon, radiusKm float64) ([]byte, error)
 }

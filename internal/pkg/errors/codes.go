@@ -21,6 +21,24 @@ var (
 		http.StatusBadRequest,
 	)
 
+	ErrInvalidZoom = New(
+		"INVALID_ZOOM",
+		"Invalid zoom level",
+		http.StatusBadRequest,
+	)
+
+	ErrInvalidTileCoordinates = New(
+		"INVALID_TILE_COORDINATES",
+		"Invalid tile coordinates",
+		http.StatusBadRequest,
+	)
+
+	ErrInvalidBoundaryID = New(
+		"INVALID_BOUNDARY_ID",
+		"Invalid boundary ID",
+		http.StatusBadRequest,
+	)
+
 	ErrDatabaseError = New(
 		"DATABASE_ERROR",
 		"Database operation failed",

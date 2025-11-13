@@ -383,3 +383,112 @@ func (r *boundaryRepository) GetByAdminLevel(ctx context.Context, level int, lim
 
 	return boundaries, nil
 }
+
+// GetBoundariesInRadius возвращает границы в радиусе от точки
+func (r *boundaryRepository) GetBoundariesInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.AdminBoundary, error) {
+	query := `
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326) AS geom
+		),
+		circle AS (
+			SELECT ST_Buffer(point.geom::geography, $3 * 1000)::geometry AS geom
+			FROM point
+		)
+		SELECT 
+			id, osm_id, name, name_en, type, admin_level,
+			center_lat, center_lon, area_sq_km,
+			ST_AsGeoJSON(ST_Simplify(geometry, 0.0001)) as geometry_json
+		FROM admin_boundaries, circle
+		WHERE geometry && circle.geom
+		  AND ST_Intersects(geometry, circle.geom)
+		  AND admin_level IN (6, 8, 9)
+		ORDER BY admin_level ASC, area_sq_km ASC
+		LIMIT 50
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm)
+	if err != nil {
+		r.logger.Error("Failed to get boundaries in radius",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var boundaries []*domain.AdminBoundary
+	for rows.Next() {
+		var b domain.AdminBoundary
+		var geojson string
+
+		err := rows.Scan(
+			&b.ID, &b.OSMId, &b.Name, &b.NameEn, &b.Type, &b.AdminLevel,
+			&b.CenterLat, &b.CenterLon, &b.AreaSqKm, &geojson,
+		)
+		if err != nil {
+			r.logger.Error("Failed to scan boundary", zap.Error(err))
+			continue
+		}
+
+		boundaries = append(boundaries, &b)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("Error iterating boundary rows", zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	return boundaries, nil
+}
+
+// GetBoundariesRadiusTile генерирует MVT тайл с границами в радиусе от точки
+func (r *boundaryRepository) GetBoundariesRadiusTile(ctx context.Context, lat, lon, radiusKm float64) ([]byte, error) {
+	query := `
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326) AS geom
+		),
+		circle AS (
+			SELECT ST_Buffer(point.geom::geography, $3 * 1000)::geometry AS geom
+			FROM point
+		),
+		mvt_geom AS (
+			SELECT 
+				id, name, type, admin_level,
+				ST_AsMVTGeom(
+					ST_Simplify(geometry, 0.0001),
+					circle.geom,
+					4096,
+					256,
+					true
+				) AS geom
+			FROM admin_boundaries, circle
+			WHERE geometry && circle.geom
+			  AND ST_Intersects(geometry, circle.geom)
+			  AND admin_level IN (6, 8, 9)
+			ORDER BY admin_level ASC, area_sq_km ASC
+			LIMIT 50
+		)
+		SELECT ST_AsMVT(mvt_geom.*, 'boundaries') AS tile
+		FROM mvt_geom
+		WHERE geom IS NOT NULL
+	`
+
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, lon, lat, radiusKm).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to generate boundaries radius tile",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+
+	return tile, nil
+}

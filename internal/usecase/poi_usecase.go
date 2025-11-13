@@ -104,3 +104,86 @@ func (uc *POIUseCase) GetSubcategories(ctx context.Context, categoryID string, l
 
 	return subcategories, nil
 }
+
+// GetPOITile генерирует MVT тайл с POI для заданных координат тайла
+func (uc *POIUseCase) GetPOITile(
+	ctx context.Context,
+	z, x, y int,
+	categories []string,
+) ([]byte, error) {
+	// Validate zoom level
+	if z < 0 || z > 20 {
+		return nil, errors.ErrInvalidZoom
+	}
+
+	// Validate tile coordinates
+	maxTile := 1 << uint(z)
+	if x < 0 || x >= maxTile || y < 0 || y >= maxTile {
+		return nil, errors.ErrInvalidTileCoordinates
+	}
+
+	tile, err := uc.poiRepo.GetPOITile(ctx, z, x, y, categories)
+	if err != nil {
+		uc.logger.Error("Failed to generate POI tile",
+			zap.Int("z", z),
+			zap.Int("x", x),
+			zap.Int("y", y),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return tile, nil
+}
+
+// GetPOIRadiusTile генерирует MVT тайл с POI в радиусе от точки
+func (uc *POIUseCase) GetPOIRadiusTile(
+	ctx context.Context,
+	lat, lon, radiusKm float64,
+	categories []string,
+) ([]byte, error) {
+	// Validate coordinates
+	if !utils.ValidateCoordinates(lat, lon) {
+		return nil, errors.ErrInvalidCoordinates
+	}
+
+	// Validate radius
+	if !utils.ValidateRadius(radiusKm) {
+		return nil, errors.ErrInvalidRadius
+	}
+
+	tile, err := uc.poiRepo.GetPOIRadiusTile(ctx, lat, lon, radiusKm, categories)
+	if err != nil {
+		uc.logger.Error("Failed to generate POI radius tile",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return tile, nil
+}
+
+// GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
+func (uc *POIUseCase) GetPOIByBoundaryTile(
+	ctx context.Context,
+	boundaryID string,
+	categories []string,
+) ([]byte, error) {
+	if boundaryID == "" {
+		return nil, errors.ErrInvalidBoundaryID
+	}
+
+	tile, err := uc.poiRepo.GetPOIByBoundaryTile(ctx, boundaryID, categories)
+	if err != nil {
+		uc.logger.Error("Failed to generate POI boundary tile",
+			zap.String("boundary_id", boundaryID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return tile, nil
+}

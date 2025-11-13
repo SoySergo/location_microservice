@@ -207,9 +207,10 @@ func (r *transportRepository) GetTransportTile(ctx context.Context, z, x, y int)
 			WHERE geometry && bounds.geom
 		)
 		SELECT 
-			ST_AsMVT(stations_mvt.*, 'stations') ||
-			ST_AsMVT(lines_mvt.*, 'lines') AS tile
-		FROM stations_mvt, lines_mvt
+			COALESCE(ST_AsMVT(stations_mvt.*, 'stations'), ''::bytea) ||
+			COALESCE(ST_AsMVT(lines_mvt.*, 'lines'), ''::bytea) AS tile
+		FROM stations_mvt
+		FULL OUTER JOIN lines_mvt ON true
 	`
 
 	var tile []byte
@@ -237,19 +238,33 @@ func (r *transportRepository) GetLineTile(ctx context.Context, lineID string) ([
 			FROM transport_lines
 			WHERE id = $1
 		),
+		bounds AS (
+			SELECT 
+				ST_Buffer(
+					ST_Envelope(geometry)::geography,
+					CASE 
+						WHEN ST_Length(geometry::geography) < 5000 THEN 1000      -- <5км: 1км padding
+						WHEN ST_Length(geometry::geography) < 20000 THEN 2000     -- <20км: 2км padding
+						WHEN ST_Length(geometry::geography) < 100000 THEN 5000    -- <100км: 5км padding
+						ELSE 10000                                                -- >100км: 10км padding
+					END
+				)::geometry AS geom
+			FROM line_data
+		),
 		line_mvt AS (
 			SELECT 
-				id, name, ref, type, color, text_color,
-				operator, network, from_station, to_station,
+				ld.id, ld.name, ld.ref, ld.type, ld.color, ld.text_color,
+				ld.operator, ld.network, ld.from_station, ld.to_station,
 				ST_AsMVTGeom(
-					geometry,
-					ST_Expand(ST_Envelope(geometry), 0.1),
+					ld.geometry,
+					b.geom,
 					4096, 256, true
 				) AS geom
-			FROM line_data
+			FROM line_data ld, bounds b
 		)
 		SELECT ST_AsMVT(line_mvt.*, 'line') AS tile
 		FROM line_mvt
+		WHERE geom IS NOT NULL
 	`
 
 	var tile []byte
@@ -280,7 +295,16 @@ func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []string
 			WHERE id = ANY($1)
 		),
 		bounds AS (
-			SELECT ST_Expand(ST_Envelope(ST_Collect(geometry)), 0.1) AS geom
+			SELECT 
+				ST_Buffer(
+					ST_Envelope(ST_Collect(geometry))::geography,
+					CASE 
+						WHEN MAX(ST_Length(geometry::geography)) < 5000 THEN 1000      -- <5км: 1км padding
+						WHEN MAX(ST_Length(geometry::geography)) < 20000 THEN 2000     -- <20км: 2км padding
+						WHEN MAX(ST_Length(geometry::geography)) < 100000 THEN 5000    -- <100км: 5км padding
+						ELSE 10000                                                     -- >100км: 10км padding
+					END
+				)::geometry AS geom
 			FROM lines_data
 		),
 		lines_mvt AS (
@@ -292,6 +316,7 @@ func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []string
 		)
 		SELECT ST_AsMVT(lines_mvt.*, 'lines') AS tile
 		FROM lines_mvt
+		WHERE geom IS NOT NULL
 	`
 
 	var tile []byte
@@ -303,6 +328,197 @@ func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []string
 		r.logger.Error("Failed to generate lines tile",
 			zap.Strings("line_ids", lineIDs),
 			zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	return tile, nil
+}
+
+// GetStationsInRadius возвращает станции в радиусе от точки
+func (r *transportRepository) GetStationsInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.TransportStation, error) {
+	query := `
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geom
+		),
+		stations_in_radius AS (
+			SELECT 
+				s.id, s.osm_id, s.name, s.name_en, s.type,
+				s.lat, s.lon, s.line_ids, s.operator, s.network, s.wheelchair,
+				ST_Distance(s.geometry::geography, point.geom) AS distance
+			FROM transport_stations s, point
+			WHERE ST_DWithin(s.geometry::geography, point.geom, $3 * 1000)
+		)
+		SELECT 
+			id, osm_id, name, name_en, type,
+			lat, lon, line_ids, operator, network, wheelchair, distance
+		FROM stations_in_radius
+		ORDER BY distance
+		LIMIT 100
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm)
+	if err != nil {
+		r.logger.Error("Failed to get stations in radius",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var stations []*domain.TransportStation
+	for rows.Next() {
+		var s domain.TransportStation
+		var lineIDs []string
+		var distance float64
+
+		err := rows.Scan(
+			&s.ID, &s.OSMId, &s.Name, &s.NameEn, &s.Type,
+			&s.Lat, &s.Lon, &lineIDs, &s.Operator, &s.Network, &s.Wheelchair,
+			&distance,
+		)
+		if err != nil {
+			r.logger.Error("Failed to scan station", zap.Error(err))
+			continue
+		}
+
+		s.LineIDs = lineIDs
+		stations = append(stations, &s)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("Error iterating station rows", zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	return stations, nil
+}
+
+// GetLinesInRadius возвращает линии пересекающиеся с радиусом от точки
+func (r *transportRepository) GetLinesInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.TransportLine, error) {
+	query := `
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326) AS geom
+		),
+		circle AS (
+			SELECT ST_Buffer(point.geom::geography, $3 * 1000)::geometry AS geom
+			FROM point
+		)
+		SELECT 
+			id, osm_id, name, ref, type, color, text_color,
+			operator, network, from_station, to_station, station_ids,
+			ST_AsGeoJSON(ST_Intersection(geometry, circle.geom)) as geometry_json
+		FROM transport_lines, circle
+		WHERE geometry && circle.geom
+		  AND ST_Intersects(geometry, circle.geom)
+		ORDER BY name
+		LIMIT 50
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm)
+	if err != nil {
+		r.logger.Error("Failed to get lines in radius",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var lines []*domain.TransportLine
+	for rows.Next() {
+		var l domain.TransportLine
+		var stationIDs []string
+		var geojson string
+
+		err := rows.Scan(
+			&l.ID, &l.OSMId, &l.Name, &l.Ref, &l.Type,
+			&l.Color, &l.TextColor, &l.Operator, &l.Network,
+			&l.FromStation, &l.ToStation, &stationIDs, &geojson,
+		)
+		if err != nil {
+			r.logger.Error("Failed to scan line", zap.Error(err))
+			continue
+		}
+
+		l.StationIDs = stationIDs
+		lines = append(lines, &l)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("Error iterating line rows", zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	return lines, nil
+}
+
+// GetTransportRadiusTile генерирует MVT тайл с транспортом в радиусе от точки
+func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, lon, radiusKm float64) ([]byte, error) {
+	query := `
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geom
+		),
+		circle AS (
+			SELECT ST_Buffer(point.geom, $3 * 1000)::geometry AS geom
+			FROM point
+		),
+		stations_mvt AS (
+			SELECT 
+				s.id, s.name, s.type,
+				array_length(s.line_ids, 1) as line_count,
+				ST_AsMVTGeom(
+					s.geometry,
+					circle.geom,
+					4096,
+					256,
+					true
+				) AS geom
+			FROM transport_stations s, circle
+			WHERE s.geometry && circle.geom
+			  AND ST_Contains(circle.geom, s.geometry)
+			ORDER BY s.name
+			LIMIT 100
+		),
+		lines_mvt AS (
+			SELECT 
+				l.id, l.name, l.ref, l.type, l.color,
+				ST_AsMVTGeom(
+					ST_Intersection(l.geometry, circle.geom),
+					circle.geom,
+					4096,
+					256,
+					true
+				) AS geom
+			FROM transport_lines l, circle
+			WHERE l.geometry && circle.geom
+			  AND ST_Intersects(l.geometry, circle.geom)
+			ORDER BY l.name
+			LIMIT 50
+		)
+		SELECT 
+			COALESCE(ST_AsMVT(stations_mvt.*, 'transport_stations'), ''::bytea) ||
+			COALESCE(ST_AsMVT(lines_mvt.*, 'transport_lines'), ''::bytea) AS tile
+		FROM stations_mvt
+		FULL OUTER JOIN lines_mvt ON true
+	`
+
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, lon, lat, radiusKm).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to generate transport radius tile",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
 		return nil, errors.ErrDatabaseError
 	}
 

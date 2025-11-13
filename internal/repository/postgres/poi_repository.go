@@ -346,3 +346,201 @@ func (r *poiRepository) GetSubcategories(ctx context.Context, categoryID string)
 
 	return subcategories, nil
 }
+
+// GetPOIRadiusTile генерирует MVT тайл с POI в радиусе от точки
+func (r *poiRepository) GetPOIRadiusTile(ctx context.Context, lat, lon, radiusKm float64, categories []string) ([]byte, error) {
+	query := `
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geom
+		),
+		circle AS (
+			SELECT ST_Buffer(point.geom, $3 * 1000)::geometry AS geom
+			FROM point
+		),
+		mvt_geom AS (
+			SELECT 
+				p.id, p.name, p.category, p.subcategory,
+				ST_AsMVTGeom(
+					p.geometry,
+					circle.geom,
+					4096,
+					256,
+					true
+				) AS geom
+			FROM pois p, circle
+			WHERE p.geometry && circle.geom
+			  AND ST_Contains(circle.geom, p.geometry)
+	`
+
+	args := []interface{}{lon, lat, radiusKm}
+
+	if len(categories) > 0 {
+		query += " AND p.category = ANY($4)"
+		args = append(args, pq.Array(categories))
+	}
+
+	query += `
+			ORDER BY p.name
+			LIMIT 200
+		)
+		SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
+		FROM mvt_geom
+		WHERE geom IS NOT NULL
+	`
+
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to generate POI radius tile",
+			zap.Float64("lat", lat),
+			zap.Float64("lon", lon),
+			zap.Float64("radius_km", radiusKm),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+
+	return tile, nil
+}
+
+// GetPOITile генерирует MVT тайл с POI для заданных координат тайла
+func (r *poiRepository) GetPOITile(ctx context.Context, z, x, y int, categories []string) ([]byte, error) {
+	query := `
+		WITH 
+		bounds AS (
+			SELECT ST_TileEnvelope($1, $2, $3) AS geom
+		),
+		mvt_geom AS (
+			SELECT 
+				p.id, 
+				p.name, 
+				p.category, 
+				p.subcategory,
+				ST_AsMVTGeom(
+					p.geometry,
+					bounds.geom,
+					4096,
+					256,
+					true
+				) AS geom
+			FROM pois p, bounds
+			WHERE p.geometry && bounds.geom
+	`
+
+	args := []interface{}{z, x, y}
+
+	// Фильтрация по категориям если указаны
+	if len(categories) > 0 {
+		query += " AND p.category = ANY($4)"
+		args = append(args, pq.Array(categories))
+	}
+
+	// Адаптивная фильтрация и лимит по zoom level
+	query += `
+			ORDER BY 
+				CASE p.category 
+					WHEN 'landmark' THEN 1
+					WHEN 'tourism' THEN 2
+					WHEN 'restaurant' THEN 3
+					WHEN 'hotel' THEN 4
+					ELSE 5
+				END,
+				p.name
+			LIMIT CASE 
+				WHEN $1 < 10 THEN 50
+				WHEN $1 < 13 THEN 200
+				WHEN $1 < 15 THEN 500
+				ELSE 1000
+			END
+		)
+		SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
+		FROM mvt_geom
+		WHERE geom IS NOT NULL
+	`
+
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to generate POI tile",
+			zap.Int("z", z),
+			zap.Int("x", x),
+			zap.Int("y", y),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+
+	return tile, nil
+}
+
+// GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
+func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID string, categories []string) ([]byte, error) {
+	query := `
+		WITH 
+		boundary AS (
+			SELECT geometry FROM admin_boundaries WHERE id = $1
+		),
+		mvt_geom AS (
+			SELECT 
+				p.id,
+				p.name,
+				p.category,
+				p.subcategory,
+				ST_AsMVTGeom(
+					p.geometry,
+					b.geometry,
+					4096,
+					256,
+					true
+				) AS geom
+			FROM pois p, boundary b
+			WHERE p.geometry && b.geometry
+			  AND ST_Contains(b.geometry, p.geometry)
+	`
+
+	args := []interface{}{boundaryID}
+
+	// Фильтрация по категориям если указаны
+	if len(categories) > 0 {
+		query += " AND p.category = ANY($2)"
+		args = append(args, pq.Array(categories))
+	}
+
+	query += `
+			ORDER BY 
+				CASE p.category 
+					WHEN 'landmark' THEN 1
+					WHEN 'tourism' THEN 2
+					WHEN 'restaurant' THEN 3
+					WHEN 'hotel' THEN 4
+					ELSE 5
+				END,
+				p.name
+			LIMIT 1000
+		)
+		SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
+		FROM mvt_geom
+		WHERE geom IS NOT NULL
+	`
+
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to generate POI boundary tile",
+			zap.String("boundary_id", boundaryID),
+			zap.Error(err),
+		)
+		return nil, errors.ErrDatabaseError
+	}
+
+	return tile, nil
+}

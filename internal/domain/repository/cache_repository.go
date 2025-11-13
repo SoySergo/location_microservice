@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"time"
+
+	"github.com/location-microservice/internal/domain"
 )
 
 // CacheRepository определяет методы для работы с кешем
@@ -24,4 +26,10 @@ type CacheRepository interface {
 
 	// SetTile сохраняет тайл в кеше
 	SetTile(ctx context.Context, z, x, y int, data []byte, ttl time.Duration) error
+
+	// GetStats получает статистику из кеша
+	GetStats(ctx context.Context) (*domain.Statistics, error)
+
+	// SetStats сохраняет статистику в кеше
+	SetStats(ctx context.Context, stats *domain.Statistics, ttl time.Duration) error
 }

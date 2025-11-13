@@ -25,4 +25,13 @@ type POIRepository interface {
 
 	// GetSubcategories возвращает подкатегории для категории
 	GetSubcategories(ctx context.Context, categoryID string) ([]*domain.POISubcategory, error)
+
+	// GetPOITile генерирует MVT тайл с POI для заданных координат тайла
+	GetPOITile(ctx context.Context, z, x, y int, categories []string) ([]byte, error)
+
+	// GetPOIRadiusTile генерирует MVT тайл с POI в радиусе от точки
+	GetPOIRadiusTile(ctx context.Context, lat, lon, radiusKm float64, categories []string) ([]byte, error)
+
+	// GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
+	GetPOIByBoundaryTile(ctx context.Context, boundaryID string, categories []string) ([]byte, error)
 }

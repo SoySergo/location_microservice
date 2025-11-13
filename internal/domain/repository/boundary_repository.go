@@ -31,4 +31,10 @@ type BoundaryRepository interface {
 
 	// GetByAdminLevel возвращает границы определенного уровня
 	GetByAdminLevel(ctx context.Context, level int, limit int) ([]*domain.AdminBoundary, error)
+
+	// GetBoundariesInRadius возвращает границы в радиусе от точки (для использования в коде)
+	GetBoundariesInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.AdminBoundary, error)
+
+	// GetBoundariesRadiusTile генерирует MVT тайл с границами в радиусе от точки
+	GetBoundariesRadiusTile(ctx context.Context, lat, lon, radiusKm float64) ([]byte, error)
 }

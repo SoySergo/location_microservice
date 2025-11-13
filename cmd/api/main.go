@@ -81,6 +81,7 @@ func main() {
 	transportRepo := postgres.NewTransportRepository(db)
 	poiRepo := postgres.NewPOIRepository(db)
 	environmentRepo := postgres.NewEnvironmentRepository(db)
+	statsRepo := postgres.NewStatsRepository(db, log)
 	cacheRepo := cache.NewCacheRepository(redisClient)
 
 	log.Info("Repositories initialized")
@@ -107,9 +108,16 @@ func main() {
 		boundaryRepo,
 		transportRepo,
 		environmentRepo,
+		poiRepo,
 		cacheRepo,
 		log,
 		cfg.Cache.TilesCacheTTL,
+	)
+
+	statsUC := usecase.NewStatsUseCase(
+		statsRepo,
+		cacheRepo,
+		log,
 	)
 
 	log.Info("Use cases initialized")
@@ -119,6 +127,7 @@ func main() {
 	transportHandler := handler.NewTransportHandler(transportUC, log)
 	poiHandler := handler.NewPOIHandler(poiUC, log)
 	tileHandler := handler.NewTileHandler(tileUC, log)
+	statsHandler := handler.NewStatsHandler(statsUC, log)
 
 	log.Info("HTTP handlers initialized")
 
@@ -130,6 +139,7 @@ func main() {
 		transportHandler,
 		poiHandler,
 		tileHandler,
+		statsHandler,
 	)
 
 	log.Info("HTTP server initialized")

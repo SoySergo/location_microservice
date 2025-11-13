@@ -53,3 +53,11 @@ type BatchNearestTransportRequest struct {
 type TransportLinesRequest struct {
 	IDs []string `json:"ids" validate:"required,min=1,max=50"`
 }
+
+// RadiusTilesRequest - запрос на получение всех данных в радиусе в формате MVT
+type RadiusTilesRequest struct {
+	Lat      float64  `json:"lat" validate:"required,min=-90,max=90"`
+	Lon      float64  `json:"lon" validate:"required,min=-180,max=180"`
+	RadiusKm float64  `json:"radius_km" validate:"required,min=0.1,max=50"`
+	Layers   []string `json:"layers,omitempty" validate:"omitempty,dive,oneof=boundaries transport pois green water beaches noise tourist"`
+}

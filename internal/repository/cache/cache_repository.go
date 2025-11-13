@@ -2,9 +2,11 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/location-microservice/internal/domain"
 	"github.com/location-microservice/internal/domain/repository"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -75,5 +77,37 @@ func (r *cacheRepository) GetTile(ctx context.Context, z, x, y int) ([]byte, err
 
 func (r *cacheRepository) SetTile(ctx context.Context, z, x, y int, data []byte, ttl time.Duration) error {
 	key := fmt.Sprintf("tile:%d:%d:%d", z, x, y)
+	return r.Set(ctx, key, data, ttl)
+}
+
+// GetStats получает статистику из кеша
+func (r *cacheRepository) GetStats(ctx context.Context) (*domain.Statistics, error) {
+	key := "stats:current"
+	data, err := r.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, nil // Cache miss
+	}
+
+	var stats domain.Statistics
+	if err := json.Unmarshal(data, &stats); err != nil {
+		r.logger.Error("Failed to unmarshal stats from cache", zap.Error(err))
+		return nil, fmt.Errorf("unmarshal stats: %w", err)
+	}
+
+	return &stats, nil
+}
+
+// SetStats сохраняет статистику в кеше
+func (r *cacheRepository) SetStats(ctx context.Context, stats *domain.Statistics, ttl time.Duration) error {
+	key := "stats:current"
+	data, err := json.Marshal(stats)
+	if err != nil {
+		r.logger.Error("Failed to marshal stats", zap.Error(err))
+		return fmt.Errorf("marshal stats: %w", err)
+	}
+
 	return r.Set(ctx, key, data, ttl)
 }
