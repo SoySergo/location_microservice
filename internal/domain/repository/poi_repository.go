@@ -9,7 +9,7 @@ import (
 // POIRepository определяет методы для работы с точками интереса
 type POIRepository interface {
 	// GetByID возвращает POI по ID
-	GetByID(ctx context.Context, id string) (*domain.POI, error)
+	GetByID(ctx context.Context, id int64) (*domain.POI, error)
 
 	// GetNearby возвращает POI в радиусе от точки
 	GetNearby(ctx context.Context, lat, lon float64, radiusKm float64, categories []string) ([]*domain.POI, error)
@@ -24,7 +24,7 @@ type POIRepository interface {
 	GetCategories(ctx context.Context) ([]*domain.POICategory, error)
 
 	// GetSubcategories возвращает подкатегории для категории
-	GetSubcategories(ctx context.Context, categoryID string) ([]*domain.POISubcategory, error)
+	GetSubcategories(ctx context.Context, categoryID int64) ([]*domain.POISubcategory, error)
 
 	// GetPOITile генерирует MVT тайл с POI для заданных координат тайла
 	GetPOITile(ctx context.Context, z, x, y int, categories []string) ([]byte, error)
@@ -33,5 +33,5 @@ type POIRepository interface {
 	GetPOIRadiusTile(ctx context.Context, lat, lon, radiusKm float64, categories []string) ([]byte, error)
 
 	// GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
-	GetPOIByBoundaryTile(ctx context.Context, boundaryID string, categories []string) ([]byte, error)
+	GetPOIByBoundaryTile(ctx context.Context, boundaryID int64, categories []string) ([]byte, error)
 }

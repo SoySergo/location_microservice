@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 
+	"github.com/location-microservice/internal/domain"
 	"github.com/location-microservice/internal/domain/repository"
 	"github.com/location-microservice/internal/pkg/errors"
 	"github.com/location-microservice/internal/pkg/utils"
@@ -57,35 +58,21 @@ func (uc *TransportUseCase) GetNearestStations(
 	result := make([]dto.TransportStationWithLines, 0, len(stations))
 	for _, station := range stations {
 		// Get lines for this station
-		lines := make([]dto.TransportLineSimple, 0)
+		var transportLines []*domain.TransportLine
 		if len(station.LineIDs) > 0 {
-			transportLines, err := uc.transportRepo.GetLinesByIDs(ctx, station.LineIDs)
+			lines, err := uc.transportRepo.GetLinesByIDs(ctx, station.LineIDs)
 			if err != nil {
-				uc.logger.Warn("Failed to get lines for station", zap.String("station_id", station.ID))
+				uc.logger.Warn("Failed to get lines for station", zap.Int64("station_id", station.ID))
 			} else {
-				for _, line := range transportLines {
-					lines = append(lines, dto.TransportLineSimple{
-						ID:    line.ID,
-						Name:  line.Name,
-						Ref:   line.Ref,
-						Color: line.Color,
-					})
-				}
+				transportLines = lines
 			}
 		}
 
 		// Calculate distance
 		distance := utils.HaversineDistance(req.Lat, req.Lon, station.Lat, station.Lon) * 1000 // to meters
 
-		result = append(result, dto.TransportStationWithLines{
-			ID:       station.ID,
-			Name:     station.Name,
-			Type:     station.Type,
-			Lat:      station.Lat,
-			Lon:      station.Lon,
-			Distance: distance,
-			Lines:    lines,
-		})
+		// Convert to DTO with string IDs
+		result = append(result, dto.ConvertTransportStation(station, transportLines, distance))
 	}
 
 	return &dto.NearestTransportResponse{
@@ -149,37 +136,23 @@ func (uc *TransportUseCase) BatchGetNearestStations(
 			result := make([]dto.TransportStationWithLines, 0, len(stations))
 			for _, station := range stations {
 				// Получение линий для станции
-				lines := make([]dto.TransportLineSimple, 0)
+				var transportLines []*domain.TransportLine
 				if len(station.LineIDs) > 0 {
-					transportLines, err := uc.transportRepo.GetLinesByIDs(ctx, station.LineIDs)
+					lines, err := uc.transportRepo.GetLinesByIDs(ctx, station.LineIDs)
 					if err != nil {
 						uc.logger.Warn("Failed to get lines for station in batch",
-							zap.String("station_id", station.ID),
+							zap.Int64("station_id", station.ID),
 							zap.Int("point_index", idx))
 					} else {
-						for _, line := range transportLines {
-							lines = append(lines, dto.TransportLineSimple{
-								ID:    line.ID,
-								Name:  line.Name,
-								Ref:   line.Ref,
-								Color: line.Color,
-							})
-						}
+						transportLines = lines
 					}
 				}
 
 				// Расчет расстояния
 				distance := utils.HaversineDistance(pt.Lat, pt.Lon, station.Lat, station.Lon) * 1000 // в метры
 
-				result = append(result, dto.TransportStationWithLines{
-					ID:       station.ID,
-					Name:     station.Name,
-					Type:     station.Type,
-					Lat:      station.Lat,
-					Lon:      station.Lon,
-					Distance: distance,
-					Lines:    lines,
-				})
+				// Convert to DTO with string IDs
+				result = append(result, dto.ConvertTransportStation(station, transportLines, distance))
 			}
 
 			resultsChan <- indexedResult{index: idx, stations: result}

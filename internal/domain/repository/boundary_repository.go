@@ -9,7 +9,7 @@ import (
 // BoundaryRepository определяет методы для работы с административными границами
 type BoundaryRepository interface {
 	// GetByID возвращает административную границу по ID
-	GetByID(ctx context.Context, id string) (*domain.AdminBoundary, error)
+	GetByID(ctx context.Context, id int64) (*domain.AdminBoundary, error)
 
 	// SearchByText выполняет текстовый поиск по названиям границ с поддержкой языков и фильтрации
 	SearchByText(ctx context.Context, query string, lang string, adminLevels []int, limit int) ([]*domain.AdminBoundary, error)
@@ -27,7 +27,7 @@ type BoundaryRepository interface {
 	Search(ctx context.Context, query string, limit int) ([]*domain.AdminBoundary, error)
 
 	// GetChildren возвращает дочерние границы для родительской
-	GetChildren(ctx context.Context, parentID string) ([]*domain.AdminBoundary, error)
+	GetChildren(ctx context.Context, parentID int64) ([]*domain.AdminBoundary, error)
 
 	// GetByAdminLevel возвращает границы определенного уровня
 	GetByAdminLevel(ctx context.Context, level int, limit int) ([]*domain.AdminBoundary, error)

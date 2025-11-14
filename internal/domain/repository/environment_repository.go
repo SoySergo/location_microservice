@@ -24,13 +24,13 @@ type EnvironmentRepository interface {
 	GetTouristZonesNearby(ctx context.Context, lat, lon float64, radiusKm float64) ([]*domain.TouristZone, error)
 
 	// GetGreenSpaceByID возвращает зеленую зону по ID
-	GetGreenSpaceByID(ctx context.Context, id string) (*domain.GreenSpace, error)
+	GetGreenSpaceByID(ctx context.Context, id int64) (*domain.GreenSpace, error)
 
 	// GetBeachByID возвращает пляж по ID
-	GetBeachByID(ctx context.Context, id string) (*domain.Beach, error)
+	GetBeachByID(ctx context.Context, id int64) (*domain.Beach, error)
 
 	// GetTouristZoneByID возвращает туристическую зону по ID
-	GetTouristZoneByID(ctx context.Context, id string) (*domain.TouristZone, error)
+	GetTouristZoneByID(ctx context.Context, id int64) (*domain.TouristZone, error)
 
 	// GetGreenSpacesTile возвращает MVT tile с зелеными зонами
 	GetGreenSpacesTile(ctx context.Context, z, x, y int) ([]byte, error)

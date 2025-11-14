@@ -62,10 +62,14 @@ func (h *POIHandler) GetCategories(c *fiber.Ctx) error {
 
 // GetSubcategories - получение подкатегорий для категории
 func (h *POIHandler) GetSubcategories(c *fiber.Ctx) error {
-	categoryID := c.Params("id")
+	// Parse int ID from path parameter (ParamsInt already handles parsing)
+	categoryID, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid category ID format"})
+	}
 	lang := c.Query("language", "en")
 
-	subcategories, err := h.poiUC.GetSubcategories(c.Context(), categoryID, lang)
+	subcategories, err := h.poiUC.GetSubcategories(c.Context(), int64(categoryID), lang)
 	if err != nil {
 		return utils.SendError(c, err)
 	}

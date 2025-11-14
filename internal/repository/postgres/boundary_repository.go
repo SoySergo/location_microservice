@@ -27,11 +27,14 @@ func NewBoundaryRepository(db *DB) repository.BoundaryRepository {
 }
 
 // GetByID возвращает административную границу по ID
-func (r *boundaryRepository) GetByID(ctx context.Context, id string) (*domain.AdminBoundary, error) {
+func (r *boundaryRepository) GetByID(ctx context.Context, id int64) (*domain.AdminBoundary, error) {
 	query := `
 		SELECT 
-			id, osm_id, name, name_en, name_es, name_ca, name_ru, name_uk, 
-			name_fr, name_pt, name_it, name_de, type, admin_level,
+			id, osm_id, name, 
+			COALESCE(name_en, ''), COALESCE(name_es, ''), COALESCE(name_ca, ''), 
+			COALESCE(name_ru, ''), COALESCE(name_uk, ''), COALESCE(name_fr, ''), 
+			COALESCE(name_pt, ''), COALESCE(name_it, ''), COALESCE(name_de, ''), 
+			type, admin_level,
 			center_lat, center_lon, parent_id, population, area_sq_km,
 			tags, created_at, updated_at,
 			ST_AsGeoJSON(geometry) as geometry_json
@@ -59,7 +62,7 @@ func (r *boundaryRepository) GetByID(ctx context.Context, id string) (*domain.Ad
 		return nil, errors.ErrLocationNotFound
 	}
 	if err != nil {
-		r.logger.Error("Failed to get boundary by ID", zap.String("id", id), zap.Error(err))
+		r.logger.Error("Failed to get boundary by ID", zap.Int64("id", id), zap.Error(err))
 		return nil, errors.ErrDatabaseError
 	}
 
@@ -94,9 +97,16 @@ func (r *boundaryRepository) SearchByText(
 
 	// Фильтр по административным уровням
 	if len(adminLevels) > 0 {
-		sqlQuery += fmt.Sprintf(" AND admin_level = ANY($%d)", argIndex)
-		args = append(args, adminLevels)
-		argIndex++
+		placeholders := ""
+		for i, level := range adminLevels {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += fmt.Sprintf("$%d", argIndex)
+			args = append(args, level)
+			argIndex++
+		}
+		sqlQuery += fmt.Sprintf(" AND admin_level IN (%s)", placeholders)
 	}
 
 	sqlQuery += " ORDER BY rank DESC, admin_level ASC"
@@ -155,18 +165,17 @@ func (r *boundaryRepository) ReverseGeocode(
 			MAX(CASE WHEN admin_level = 8 THEN name END) AS city,
 			MAX(CASE WHEN admin_level = 9 THEN name END) AS district
 		FROM admin_boundaries, point
-		WHERE geometry && ST_Expand(point.geom, 0.1)
+		WHERE geometry && ST_Expand(point.geom, $3)
 		  AND ST_Contains(geometry, point.geom)
 	`
 
-	var addr domain.Address
-	var district sql.NullString
+	var country, region, province, city, district sql.NullString
 
-	err := r.db.QueryRowContext(ctx, query, lon, lat).Scan(
-		&addr.Country, &addr.Region, &addr.Province, &addr.City, &district,
+	err := r.db.QueryRowContext(ctx, query, lon, lat, BoundaryExpansionDegrees).Scan(
+		&country, &region, &province, &city, &district,
 	)
 
-	if err == sql.ErrNoRows {
+	if err == sql.ErrNoRows || (!country.Valid && !region.Valid && !province.Valid && !city.Valid) {
 		return nil, errors.ErrLocationNotFound
 	}
 	if err != nil {
@@ -178,29 +187,24 @@ func (r *boundaryRepository) ReverseGeocode(
 		return nil, errors.ErrDatabaseError
 	}
 
+	addr := &domain.Address{
+		Country:  country.String,
+		Region:   region.String,
+		Province: province.String,
+		City:     city.String,
+	}
+
 	if district.Valid {
 		addr.District = &district.String
 	}
 
-	return &addr, nil
+	return addr, nil
 }
 
 // GetTile генерирует MVT тайл для административных границ
 func (r *boundaryRepository) GetTile(ctx context.Context, z, x, y int) ([]byte, error) {
 	// Определяем уровни административных границ в зависимости от zoom
-	var adminLevels string
-	switch {
-	case z <= 4:
-		adminLevels = "2"
-	case z <= 7:
-		adminLevels = "2,4"
-	case z <= 10:
-		adminLevels = "2,4,6"
-	case z <= 13:
-		adminLevels = "2,4,6,8"
-	default:
-		adminLevels = "2,4,6,8,9"
-	}
+	adminLevels := getAdminLevelsString(z)
 
 	query := fmt.Sprintf(`
 		WITH 
@@ -213,8 +217,8 @@ func (r *boundaryRepository) GetTile(ctx context.Context, z, x, y int) ([]byte, 
 				ST_AsMVTGeom(
 					geometry,
 					bounds.geom,
-					4096,
-					256,
+					$4,
+					$5,
 					true
 				) AS geom
 			FROM admin_boundaries, bounds
@@ -227,7 +231,7 @@ func (r *boundaryRepository) GetTile(ctx context.Context, z, x, y int) ([]byte, 
 	`, adminLevels)
 
 	var tile []byte
-	err := r.db.QueryRowContext(ctx, query, z, x, y).Scan(&tile)
+	err := r.db.QueryRowContext(ctx, query, z, x, y, MVTExtent, MVTBuffer).Scan(&tile)
 	if err == sql.ErrNoRows {
 		return []byte{}, nil // Пустой тайл
 	}
@@ -254,12 +258,12 @@ func (r *boundaryRepository) GetByPoint(ctx context.Context, lat, lon float64) (
 			id, osm_id, name, name_en, type, admin_level,
 			center_lat, center_lon, area_sq_km
 		FROM admin_boundaries, point
-		WHERE geometry && ST_Expand(point.geom, 0.1)
+		WHERE geometry && ST_Expand(point.geom, $3)
 		  AND ST_Contains(geometry, point.geom)
 		ORDER BY admin_level ASC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, lon, lat)
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, BoundaryExpansionDegrees)
 	if err != nil {
 		r.logger.Error("Failed to get boundaries by point",
 			zap.Float64("lat", lat),
@@ -298,7 +302,7 @@ func (r *boundaryRepository) Search(ctx context.Context, query string, limit int
 }
 
 // GetChildren возвращает дочерние границы для родительской
-func (r *boundaryRepository) GetChildren(ctx context.Context, parentID string) ([]*domain.AdminBoundary, error) {
+func (r *boundaryRepository) GetChildren(ctx context.Context, parentID int64) ([]*domain.AdminBoundary, error) {
 	query := `
 		SELECT 
 			id, osm_id, name, name_en, type, admin_level,
@@ -311,7 +315,7 @@ func (r *boundaryRepository) GetChildren(ctx context.Context, parentID string) (
 	rows, err := r.db.QueryContext(ctx, query, parentID)
 	if err != nil {
 		r.logger.Error("Failed to get children boundaries",
-			zap.String("parent_id", parentID),
+			zap.Int64("parent_id", parentID),
 			zap.Error(err),
 		)
 		return nil, errors.ErrDatabaseError
@@ -401,12 +405,12 @@ func (r *boundaryRepository) GetBoundariesInRadius(ctx context.Context, lat, lon
 		FROM admin_boundaries, circle
 		WHERE geometry && circle.geom
 		  AND ST_Intersects(geometry, circle.geom)
-		  AND admin_level IN (6, 8, 9)
+			  AND admin_level IN (6, 8, 9)
 		ORDER BY admin_level ASC, area_sq_km ASC
-		LIMIT 50
+		LIMIT $4
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm)
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm, LimitBoundariesRadius)
 	if err != nil {
 		r.logger.Error("Failed to get boundaries in radius",
 			zap.Float64("lat", lat),
@@ -457,10 +461,10 @@ func (r *boundaryRepository) GetBoundariesRadiusTile(ctx context.Context, lat, l
 			SELECT 
 				id, name, type, admin_level,
 				ST_AsMVTGeom(
-					ST_Simplify(geometry, 0.0001),
+					ST_Simplify(geometry, $4),
 					circle.geom,
-					4096,
-					256,
+					$5,
+					$6,
 					true
 				) AS geom
 			FROM admin_boundaries, circle
@@ -468,7 +472,7 @@ func (r *boundaryRepository) GetBoundariesRadiusTile(ctx context.Context, lat, l
 			  AND ST_Intersects(geometry, circle.geom)
 			  AND admin_level IN (6, 8, 9)
 			ORDER BY admin_level ASC, area_sq_km ASC
-			LIMIT 50
+			LIMIT $7
 		)
 		SELECT ST_AsMVT(mvt_geom.*, 'boundaries') AS tile
 		FROM mvt_geom
@@ -476,7 +480,7 @@ func (r *boundaryRepository) GetBoundariesRadiusTile(ctx context.Context, lat, l
 	`
 
 	var tile []byte
-	err := r.db.QueryRowContext(ctx, query, lon, lat, radiusKm).Scan(&tile)
+	err := r.db.QueryRowContext(ctx, query, lon, lat, radiusKm, MVTSimplifyTolerance, MVTExtent, MVTBuffer, LimitBoundariesRadius).Scan(&tile)
 	if err == sql.ErrNoRows {
 		return []byte{}, nil
 	}

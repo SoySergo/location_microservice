@@ -12,22 +12,22 @@ type TransportRepository interface {
 	GetNearestStations(ctx context.Context, lat, lon float64, types []string, maxDistance float64, limit int) ([]*domain.TransportStation, error)
 
 	// GetLineByID возвращает линию по ID
-	GetLineByID(ctx context.Context, id string) (*domain.TransportLine, error)
+	GetLineByID(ctx context.Context, id int64) (*domain.TransportLine, error)
 
 	// GetLinesByIDs возвращает линии по списку ID
-	GetLinesByIDs(ctx context.Context, ids []string) ([]*domain.TransportLine, error)
+	GetLinesByIDs(ctx context.Context, ids []int64) ([]*domain.TransportLine, error)
 
 	// GetStationsByLineID возвращает все станции для линии
-	GetStationsByLineID(ctx context.Context, lineID string) ([]*domain.TransportStation, error)
+	GetStationsByLineID(ctx context.Context, lineID int64) ([]*domain.TransportStation, error)
 
 	// GetTransportTile генерирует MVT тайл для транспорта
 	GetTransportTile(ctx context.Context, z, x, y int) ([]byte, error)
 
 	// GetLineTile генерирует MVT тайл для одной транспортной линии
-	GetLineTile(ctx context.Context, lineID string) ([]byte, error)
+	GetLineTile(ctx context.Context, lineID int64) ([]byte, error)
 
 	// GetLinesTile генерирует MVT тайл для нескольких транспортных линий
-	GetLinesTile(ctx context.Context, lineIDs []string) ([]byte, error)
+	GetLinesTile(ctx context.Context, lineIDs []int64) ([]byte, error)
 
 	// GetStationsInRadius возвращает станции в радиусе от точки (для использования в коде)
 	GetStationsInRadius(ctx context.Context, lat, lon, radiusKm float64) ([]*domain.TransportStation, error)

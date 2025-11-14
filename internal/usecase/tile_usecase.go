@@ -173,8 +173,8 @@ func (uc *TileUseCase) GetTouristZonesTile(ctx context.Context, z, x, y int) ([]
 }
 
 // GetTransportLineTile возвращает MVT тайл для одной транспортной линии
-func (uc *TileUseCase) GetTransportLineTile(ctx context.Context, lineID string) ([]byte, error) {
-	cacheKey := fmt.Sprintf("tile:line:%s", lineID)
+func (uc *TileUseCase) GetTransportLineTile(ctx context.Context, lineID int64) ([]byte, error) {
+	cacheKey := fmt.Sprintf("tile:line:%d", lineID)
 	cached, err := uc.cacheRepo.Get(ctx, cacheKey)
 	if err == nil && cached != nil {
 		return cached, nil
@@ -183,7 +183,7 @@ func (uc *TileUseCase) GetTransportLineTile(ctx context.Context, lineID string) 
 	tile, err := uc.transportRepo.GetLineTile(ctx, lineID)
 	if err != nil {
 		uc.logger.Error("Failed to get transport line tile",
-			zap.String("line_id", lineID),
+			zap.Int64("line_id", lineID),
 			zap.Error(err))
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func (uc *TileUseCase) GetTransportLineTile(ctx context.Context, lineID string) 
 }
 
 // GetTransportLinesTile возвращает MVT тайл для нескольких транспортных линий
-func (uc *TileUseCase) GetTransportLinesTile(ctx context.Context, lineIDs []string) ([]byte, error) {
+func (uc *TileUseCase) GetTransportLinesTile(ctx context.Context, lineIDs []int64) ([]byte, error) {
 	// Создаем хеш-ключ из массива IDs для кеширования
 	cacheKey := fmt.Sprintf("tile:lines:%v", lineIDs)
 	cached, err := uc.cacheRepo.Get(ctx, cacheKey)
@@ -204,7 +204,7 @@ func (uc *TileUseCase) GetTransportLinesTile(ctx context.Context, lineIDs []stri
 	tile, err := uc.transportRepo.GetLinesTile(ctx, lineIDs)
 	if err != nil {
 		uc.logger.Error("Failed to get transport lines tile",
-			zap.Strings("line_ids", lineIDs),
+			zap.Int64s("line_ids", lineIDs),
 			zap.Error(err))
 		return nil, err
 	}

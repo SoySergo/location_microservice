@@ -1,6 +1,43 @@
 package domain
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
+	"time"
+)
+
+// JSONBMap is a custom type for handling JSONB map[string]string fields
+type JSONBMap map[string]string
+
+// Scan implements the sql.Scanner interface for JSONBMap
+func (j *JSONBMap) Scan(value interface{}) error {
+	if value == nil {
+		*j = nil
+		return nil
+	}
+
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("failed to scan JSONBMap: expected []byte")
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(bytes, &result); err != nil {
+		return err
+	}
+
+	*j = result
+	return nil
+}
+
+// Value implements the driver.Valuer interface for JSONBMap
+func (j JSONBMap) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
+}
 
 type Point struct {
 	Lat float64 `json:"lat" db:"lat"`

@@ -58,3 +58,14 @@ func (db *DB) Close() error {
 func (db *DB) Health(ctx context.Context) error {
 	return db.PingContext(ctx)
 }
+
+// NewDBForTest creates a DB instance for testing with provided database and logger
+func NewDBForTest(sqlxDB *sqlx.DB, logger *zap.Logger) *DB {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return &DB{
+		DB:     sqlxDB,
+		logger: logger,
+	}
+}

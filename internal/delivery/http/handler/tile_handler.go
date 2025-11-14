@@ -156,15 +156,17 @@ func (h *TileHandler) GetTouristZonesTile(c *fiber.Ctx) error {
 
 // GetTransportLineTile - получение тайла для одной транспортной линии
 func (h *TileHandler) GetTransportLineTile(c *fiber.Ctx) error {
-	lineID := c.Params("id")
-	if lineID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Line ID is required"})
+	// Parse string ID from path parameter
+	lineIDStr := c.Params("id")
+	lineID, err := strconv.ParseInt(lineIDStr, 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid line ID format"})
 	}
 
 	tile, err := h.tileUC.GetTransportLineTile(c.Context(), lineID)
 	if err != nil {
 		h.logger.Error("Failed to get transport line tile",
-			zap.String("line_id", lineID),
+			zap.Int64("line_id", lineID),
 			zap.Error(err))
 		return c.Status(500).SendString("Failed to generate tile")
 	}
@@ -176,7 +178,7 @@ func (h *TileHandler) GetTransportLineTile(c *fiber.Ctx) error {
 // GetTransportLinesTile - получение тайла для нескольких транспортных линий
 func (h *TileHandler) GetTransportLinesTile(c *fiber.Ctx) error {
 	var req struct {
-		IDs []string `json:"ids"`
+		IDs []string `json:"ids"` // Accept string IDs from frontend
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -191,10 +193,20 @@ func (h *TileHandler) GetTransportLinesTile(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Maximum 50 line IDs allowed"})
 	}
 
-	tile, err := h.tileUC.GetTransportLinesTile(c.Context(), req.IDs)
+	// Convert string IDs to int64
+	lineIDs := make([]int64, 0, len(req.IDs))
+	for _, idStr := range req.IDs {
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid line ID format"})
+		}
+		lineIDs = append(lineIDs, id)
+	}
+
+	tile, err := h.tileUC.GetTransportLinesTile(c.Context(), lineIDs)
 	if err != nil {
 		h.logger.Error("Failed to get transport lines tile",
-			zap.Strings("line_ids", req.IDs),
+			zap.Int64s("line_ids", lineIDs),
 			zap.Error(err))
 		return c.Status(500).SendString("Failed to generate tile")
 	}

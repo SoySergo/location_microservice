@@ -3,7 +3,7 @@ package domain
 import "time"
 
 type AdminBoundary struct {
-	ID           string                 `json:"id" db:"id"`
+	ID           int64                  `json:"id" db:"id"`
 	OSMId        int64                  `json:"osm_id" db:"osm_id"`
 	Name         string                 `json:"name" db:"name"`
 	NameEn       string                 `json:"name_en" db:"name_en"`
@@ -21,7 +21,7 @@ type AdminBoundary struct {
 	CenterLon    float64                `json:"center_lon" db:"center_lon"`
 	Geometry     []byte                 `json:"-" db:"geometry"`
 	GeometryJSON map[string]interface{} `json:"geometry,omitempty" db:"-"`
-	ParentID     *string                `json:"parent_id,omitempty" db:"parent_id"`
+	ParentID     *int64                 `json:"parent_id,omitempty" db:"parent_id"`
 	Population   *int                   `json:"population,omitempty" db:"population"`
 	AreaSqKm     *float64               `json:"area_sq_km,omitempty" db:"area_sq_km"`
 	Tags         map[string]string      `json:"tags,omitempty" db:"tags"`

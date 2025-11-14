@@ -1,6 +1,8 @@
 .PHONY: help build run migrate-up migrate-down migrate-force test lint clean dev run-api test-health test-endpoints
+.PHONY: test-db-up test-db-down test-db-reset test-integration test-integration-coverage
 
 DB_DSN := "postgres://postgres:postgres@localhost:5434/location_microservice?sslmode=disable"
+TEST_DB_DSN := "postgres://postgres:postgres@localhost:5433/location_test?sslmode=disable"
 
 help:
 	@echo "Available commands:"
@@ -16,6 +18,13 @@ help:
 	@echo "  make test-endpoints - Test all endpoints"
 	@echo "  make lint         - Run linter"
 	@echo "  make clean        - Clean build artifacts"
+	@echo ""
+	@echo "Test database commands:"
+	@echo "  make test-db-up   - Start test database"
+	@echo "  make test-db-down - Stop test database"
+	@echo "  make test-db-reset- Reset test database (remove all data)"
+	@echo "  make test-integration - Run integration tests"
+	@echo "  make test-integration-coverage - Run integration tests with coverage"
 
 build:
 	go build -o bin/api cmd/api/main.go
@@ -72,3 +81,34 @@ lint:
 
 clean:
 	rm -rf bin/
+
+# Test database commands
+test-db-up:
+	@echo "Starting test database..."
+	docker-compose -f docker-compose.test.yml up -d
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	@echo "Test database is ready on port 5433"
+
+test-db-down:
+	@echo "Stopping test database..."
+	docker-compose -f docker-compose.test.yml down
+
+test-db-reset:
+	@echo "Resetting test database (removing all data)..."
+	docker-compose -f docker-compose.test.yml down -v
+	@echo "Starting fresh test database..."
+	docker-compose -f docker-compose.test.yml up -d
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	@echo "Test database reset complete"
+
+test-integration: test-db-up
+	@echo "Running integration tests..."
+	go test -v ./internal/repository/postgres/...
+
+test-integration-coverage: test-db-up
+	@echo "Running integration tests with coverage..."
+	go test -v -cover -coverprofile=coverage.out ./internal/repository/postgres/...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"

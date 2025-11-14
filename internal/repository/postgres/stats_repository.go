@@ -91,12 +91,12 @@ func (r *statsRepository) getBoundaryStats(ctx context.Context) (*domain.Boundar
 		SELECT 
 			admin_level,
 			COUNT(*) as count
-		FROM boundaries
+		FROM admin_boundaries
 		GROUP BY admin_level
 		ORDER BY admin_level
 	`
 
-	rows, err := r.db.QueryxContext(ctx, query)
+	rows, err := r.db.DB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query boundary stats: %w", err)
 	}
@@ -145,7 +145,7 @@ func (r *statsRepository) getTransportStats(ctx context.Context) (*domain.Transp
 		GROUP BY type
 	`
 
-	rows, err := r.db.QueryxContext(ctx, stationsQuery)
+	rows, err := r.db.DB.QueryContext(ctx, stationsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query transport stations stats: %w", err)
 	}
@@ -168,7 +168,7 @@ func (r *statsRepository) getTransportStats(ctx context.Context) (*domain.Transp
 
 	// Количество линий
 	linesQuery := `SELECT COUNT(*) FROM transport_lines`
-	if err := r.db.QueryRowContext(ctx, linesQuery).Scan(&stats.TotalLines); err != nil {
+	if err := r.db.DB.QueryRowContext(ctx, linesQuery).Scan(&stats.TotalLines); err != nil {
 		return nil, fmt.Errorf("query transport lines count: %w", err)
 	}
 
@@ -189,7 +189,7 @@ func (r *statsRepository) getPOIStats(ctx context.Context) (*domain.POIStats, er
 		GROUP BY category
 	`
 
-	rows, err := r.db.QueryxContext(ctx, query)
+	rows, err := r.db.DB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query poi stats: %w", err)
 	}
@@ -230,7 +230,7 @@ func (r *statsRepository) getEnvironmentStats(ctx context.Context) (*domain.Envi
 	}
 
 	for _, q := range queries {
-		if err := r.db.QueryRowContext(ctx, q.query).Scan(q.target); err != nil {
+		if err := r.db.DB.QueryRowContext(ctx, q.query).Scan(q.target); err != nil {
 			r.logger.Warn("failed to get count", zap.String("query", q.query), zap.Error(err))
 			*q.target = 0 // Устанавливаем 0 если таблица не существует
 		}
@@ -254,12 +254,12 @@ func (r *statsRepository) getCoverageStats(ctx context.Context) (*domain.Coverag
 			ST_Y(ST_Centroid(extent)) as center_lat
 		FROM (
 			SELECT ST_Extent(geometry) as extent
-			FROM boundaries
+			FROM admin_boundaries
 			WHERE admin_level = 2
 		) as subquery
 	`
 
-	err := r.db.QueryRowContext(ctx, query).Scan(
+	err := r.db.DB.QueryRowContext(ctx, query).Scan(
 		&stats.BBoxMinLon,
 		&stats.BBoxMinLat,
 		&stats.BBoxMaxLon,

@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/location-microservice/internal/domain"
@@ -30,29 +32,48 @@ func (r *transportRepository) GetNearestStations(
 	maxDistance float64,
 	limit int,
 ) ([]*domain.TransportStation, error) {
-	query := `
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(types))
+	args := []interface{}{lon, lat}
+	for i := range types {
+		placeholders[i] = fmt.Sprintf("$%d", i+3)
+		args = append(args, types[i])
+	}
+	args = append(args, maxDistance, limit)
+
+	query := fmt.Sprintf(`
 		WITH point AS (
 			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geom
 		),
 		nearest_stations AS (
 			SELECT DISTINCT ON (s.id)
 				s.id, s.osm_id, s.name, s.name_en, s.type,
-				s.lat, s.lon, s.line_ids, s.operator, s.network, s.wheelchair,
+				s.lat, s.lon, 
+				s.line_ids,
+				s.operator, s.network, s.wheelchair,
 				ST_Distance(s.geometry::geography, point.geom) AS distance
 			FROM transport_stations s, point
-			WHERE s.type = ANY($3)
-			  AND ST_DWithin(s.geometry::geography, point.geom, $4)
+			WHERE s.type IN (%s)
+			  AND ST_DWithin(s.geometry::geography, point.geom, $%d)
 			ORDER BY s.id, distance
 		)
 		SELECT *
 		FROM nearest_stations
 		ORDER BY distance
-		LIMIT $5
-	`
+		LIMIT $%d
+	`, strings.Join(placeholders, ","), len(args)-1, len(args))
 
-	rows, err := r.db.QueryContext(ctx, query, lon, lat, types, maxDistance, limit)
+	// Применяем лимит из констант
+	args[len(args)-1] = min(limit, LimitStations)
+
+	r.logger.Debug("Executing GetNearestStations query",
+		zap.String("query", query),
+		zap.Any("args", args),
+		zap.Int("types_count", len(types)))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		r.logger.Error("Failed to get nearest stations", zap.Error(err))
+		r.logger.Error("Failed to execute query for nearest stations", zap.Error(err))
 		return nil, errors.ErrDatabaseError
 	}
 	defer rows.Close()
@@ -60,12 +81,12 @@ func (r *transportRepository) GetNearestStations(
 	var stations []*domain.TransportStation
 	for rows.Next() {
 		var s domain.TransportStation
-		var lineIDs []string
 		var distance float64
+		var lineIDsRaw interface{}
 
 		err := rows.Scan(
 			&s.ID, &s.OSMId, &s.Name, &s.NameEn, &s.Type,
-			&s.Lat, &s.Lon, &lineIDs, &s.Operator, &s.Network, &s.Wheelchair,
+			&s.Lat, &s.Lon, &lineIDsRaw, &s.Operator, &s.Network, &s.Wheelchair,
 			&distance,
 		)
 		if err != nil {
@@ -73,53 +94,69 @@ func (r *transportRepository) GetNearestStations(
 			continue
 		}
 
-		s.LineIDs = lineIDs
+		s.LineIDs, err = scanInt64Array(lineIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse line_ids array", zap.Error(err))
+			continue
+		}
+
 		stations = append(stations, &s)
 	}
 
 	return stations, nil
 }
 
-func (r *transportRepository) GetLineByID(ctx context.Context, id string) (*domain.TransportLine, error) {
+func (r *transportRepository) GetLineByID(ctx context.Context, id int64) (*domain.TransportLine, error) {
 	query := `
 		SELECT 
 			id, osm_id, name, ref, type, color, text_color,
-			operator, network, from_station, to_station, station_ids, tags
+			operator, network, from_station, to_station, 
+			station_ids
 		FROM transport_lines
 		WHERE id = $1
 	`
 
 	var line domain.TransportLine
-	var stationIDs []string
+	var stationIDsRaw interface{}
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&line.ID, &line.OSMId, &line.Name, &line.Ref, &line.Type,
 		&line.Color, &line.TextColor, &line.Operator, &line.Network,
-		&line.FromStation, &line.ToStation, &stationIDs, &line.Tags,
+		&line.FromStation, &line.ToStation, &stationIDsRaw,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, errors.ErrLocationNotFound
 	}
 	if err != nil {
-		r.logger.Error("Failed to get line by ID", zap.String("id", id), zap.Error(err))
+		r.logger.Error("Failed to get line by ID", zap.Int64("id", id), zap.Error(err))
 		return nil, errors.ErrDatabaseError
 	}
 
-	line.StationIDs = stationIDs
+	line.StationIDs, err = scanInt64Array(stationIDsRaw)
+	if err != nil {
+		r.logger.Error("Failed to parse station_ids array", zap.Int64("id", id), zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	// Initialize empty tags map
+	line.Tags = make(map[string]string)
+
 	return &line, nil
 }
 
-func (r *transportRepository) GetLinesByIDs(ctx context.Context, ids []string) ([]*domain.TransportLine, error) {
+func (r *transportRepository) GetLinesByIDs(ctx context.Context, ids []int64) ([]*domain.TransportLine, error) {
 	query := `
 		SELECT 
 			id, osm_id, name, ref, type, color, text_color,
-			operator, network, from_station, to_station, station_ids
+			operator, network, from_station, to_station,
+			station_ids
 		FROM transport_lines
-		WHERE id = ANY($1)
+		WHERE id = ANY($1::bigint[])
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, ids)
+	idsStr := int64ArrayToString(ids)
+	rows, err := r.db.QueryContext(ctx, query, idsStr)
 	if err != nil {
 		r.logger.Error("Failed to get lines by IDs", zap.Error(err))
 		return nil, errors.ErrDatabaseError
@@ -129,30 +166,36 @@ func (r *transportRepository) GetLinesByIDs(ctx context.Context, ids []string) (
 	var lines []*domain.TransportLine
 	for rows.Next() {
 		var l domain.TransportLine
-		var stationIDs []string
+		var stationIDsRaw interface{}
 
 		err := rows.Scan(
 			&l.ID, &l.OSMId, &l.Name, &l.Ref, &l.Type,
 			&l.Color, &l.TextColor, &l.Operator, &l.Network,
-			&l.FromStation, &l.ToStation, &stationIDs,
+			&l.FromStation, &l.ToStation, &stationIDsRaw,
 		)
 		if err != nil {
 			r.logger.Error("Failed to scan line", zap.Error(err))
 			continue
 		}
 
-		l.StationIDs = stationIDs
+		l.StationIDs, err = scanInt64Array(stationIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse station_ids array", zap.Error(err))
+			continue
+		}
+
 		lines = append(lines, &l)
 	}
 
 	return lines, nil
 }
 
-func (r *transportRepository) GetStationsByLineID(ctx context.Context, lineID string) ([]*domain.TransportStation, error) {
+func (r *transportRepository) GetStationsByLineID(ctx context.Context, lineID int64) ([]*domain.TransportStation, error) {
 	query := `
 		SELECT 
 			id, osm_id, name, name_en, type, lat, lon,
-			line_ids, operator, network, wheelchair
+			line_ids,
+			operator, network, wheelchair
 		FROM transport_stations
 		WHERE $1 = ANY(line_ids)
 		ORDER BY name
@@ -168,18 +211,23 @@ func (r *transportRepository) GetStationsByLineID(ctx context.Context, lineID st
 	var stations []*domain.TransportStation
 	for rows.Next() {
 		var s domain.TransportStation
-		var lineIDs []string
+		var lineIDsRaw interface{}
 
 		err := rows.Scan(
 			&s.ID, &s.OSMId, &s.Name, &s.NameEn, &s.Type,
-			&s.Lat, &s.Lon, &lineIDs, &s.Operator, &s.Network, &s.Wheelchair,
+			&s.Lat, &s.Lon, &lineIDsRaw, &s.Operator, &s.Network, &s.Wheelchair,
 		)
 		if err != nil {
 			r.logger.Error("Failed to scan station", zap.Error(err))
 			continue
 		}
 
-		s.LineIDs = lineIDs
+		s.LineIDs, err = scanInt64Array(lineIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse line_ids array", zap.Error(err))
+			continue
+		}
+
 		stations = append(stations, &s)
 	}
 
@@ -195,16 +243,16 @@ func (r *transportRepository) GetTransportTile(ctx context.Context, z, x, y int)
 		stations_mvt AS (
 			SELECT 
 				id, name, type,
-				ST_AsMVTGeom(geometry, bounds.geom, 4096, 256, true) AS geom
+				ST_AsMVTGeom(ST_Transform(geometry, 3857), bounds.geom, $4, $5, true) AS geom
 			FROM transport_stations, bounds
-			WHERE geometry && bounds.geom
+			WHERE ST_Transform(geometry, 3857) && bounds.geom
 		),
 		lines_mvt AS (
 			SELECT 
 				id, name, ref, type, color,
-				ST_AsMVTGeom(geometry, bounds.geom, 4096, 256, true) AS geom
+				ST_AsMVTGeom(ST_Transform(geometry, 3857), bounds.geom, $4, $5, true) AS geom
 			FROM transport_lines, bounds
-			WHERE geometry && bounds.geom
+			WHERE ST_Transform(geometry, 3857) && bounds.geom
 		)
 		SELECT 
 			COALESCE(ST_AsMVT(stations_mvt.*, 'stations'), ''::bytea) ||
@@ -214,7 +262,7 @@ func (r *transportRepository) GetTransportTile(ctx context.Context, z, x, y int)
 	`
 
 	var tile []byte
-	err := r.db.QueryRowContext(ctx, query, z, x, y).Scan(&tile)
+	err := r.db.QueryRowContext(ctx, query, z, x, y, MVTExtent, MVTBuffer).Scan(&tile)
 	if err == sql.ErrNoRows {
 		return []byte{}, nil
 	}
@@ -227,7 +275,7 @@ func (r *transportRepository) GetTransportTile(ctx context.Context, z, x, y int)
 }
 
 // GetLineTile генерирует MVT тайл для одной транспортной линии
-func (r *transportRepository) GetLineTile(ctx context.Context, lineID string) ([]byte, error) {
+func (r *transportRepository) GetLineTile(ctx context.Context, lineID int64) ([]byte, error) {
 	query := `
 		WITH 
 		line_data AS (
@@ -240,15 +288,18 @@ func (r *transportRepository) GetLineTile(ctx context.Context, lineID string) ([
 		),
 		bounds AS (
 			SELECT 
-				ST_Buffer(
-					ST_Envelope(geometry)::geography,
-					CASE 
-						WHEN ST_Length(geometry::geography) < 5000 THEN 1000      -- <5км: 1км padding
-						WHEN ST_Length(geometry::geography) < 20000 THEN 2000     -- <20км: 2км padding
-						WHEN ST_Length(geometry::geography) < 100000 THEN 5000    -- <100км: 5км padding
-						ELSE 10000                                                -- >100км: 10км padding
-					END
-				)::geometry AS geom
+				ST_Transform(
+					ST_Buffer(
+						ST_Envelope(geometry)::geography,
+						CASE 
+							WHEN ST_Length(geometry::geography) < 5000 THEN 1000      -- <5км: 1км padding
+							WHEN ST_Length(geometry::geography) < 20000 THEN 2000     -- <20км: 2км padding
+							WHEN ST_Length(geometry::geography) < 100000 THEN 5000    -- <100км: 5км padding
+							ELSE 10000                                                -- >100км: 10км padding
+						END
+					)::geometry,
+					3857
+				) AS geom
 			FROM line_data
 		),
 		line_mvt AS (
@@ -256,9 +307,9 @@ func (r *transportRepository) GetLineTile(ctx context.Context, lineID string) ([
 				ld.id, ld.name, ld.ref, ld.type, ld.color, ld.text_color,
 				ld.operator, ld.network, ld.from_station, ld.to_station,
 				ST_AsMVTGeom(
-					ld.geometry,
+					ST_Transform(ld.geometry, 3857),
 					b.geom,
-					4096, 256, true
+					$2, $3, true
 				) AS geom
 			FROM line_data ld, bounds b
 		)
@@ -268,13 +319,13 @@ func (r *transportRepository) GetLineTile(ctx context.Context, lineID string) ([
 	`
 
 	var tile []byte
-	err := r.db.QueryRowContext(ctx, query, lineID).Scan(&tile)
+	err := r.db.QueryRowContext(ctx, query, lineID, MVTExtent, MVTBuffer).Scan(&tile)
 	if err == sql.ErrNoRows {
 		return []byte{}, nil
 	}
 	if err != nil {
 		r.logger.Error("Failed to generate line tile",
-			zap.String("line_id", lineID),
+			zap.Int64("line_id", lineID),
 			zap.Error(err))
 		return nil, errors.ErrDatabaseError
 	}
@@ -283,7 +334,7 @@ func (r *transportRepository) GetLineTile(ctx context.Context, lineID string) ([
 }
 
 // GetLinesTile генерирует MVT тайл для нескольких транспортных линий
-func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []string) ([]byte, error) {
+func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []int64) ([]byte, error) {
 	query := `
 		WITH 
 		lines_data AS (
@@ -292,26 +343,29 @@ func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []string
 				operator, network, from_station, to_station,
 				geometry
 			FROM transport_lines
-			WHERE id = ANY($1)
+			WHERE id = ANY($1::bigint[])
 		),
 		bounds AS (
 			SELECT 
-				ST_Buffer(
-					ST_Envelope(ST_Collect(geometry))::geography,
-					CASE 
-						WHEN MAX(ST_Length(geometry::geography)) < 5000 THEN 1000      -- <5км: 1км padding
-						WHEN MAX(ST_Length(geometry::geography)) < 20000 THEN 2000     -- <20км: 2км padding
-						WHEN MAX(ST_Length(geometry::geography)) < 100000 THEN 5000    -- <100км: 5км padding
-						ELSE 10000                                                     -- >100км: 10км padding
-					END
-				)::geometry AS geom
+				ST_Transform(
+					ST_Buffer(
+						ST_Envelope(ST_Collect(geometry))::geography,
+						CASE 
+							WHEN MAX(ST_Length(geometry::geography)) < 5000 THEN 1000      -- <5км: 1км padding
+							WHEN MAX(ST_Length(geometry::geography)) < 20000 THEN 2000     -- <20км: 2км padding
+							WHEN MAX(ST_Length(geometry::geography)) < 100000 THEN 5000    -- <100км: 5км padding
+							ELSE 10000                                                     -- >100км: 10км padding
+						END
+					)::geometry,
+					3857
+				) AS geom
 			FROM lines_data
 		),
 		lines_mvt AS (
 			SELECT 
 				ld.id, ld.name, ld.ref, ld.type, ld.color, ld.text_color,
 				ld.operator, ld.network, ld.from_station, ld.to_station,
-				ST_AsMVTGeom(ld.geometry, b.geom, 4096, 256, true) AS geom
+				ST_AsMVTGeom(ST_Transform(ld.geometry, 3857), b.geom, $2, $3, true) AS geom
 			FROM lines_data ld, bounds b
 		)
 		SELECT ST_AsMVT(lines_mvt.*, 'lines') AS tile
@@ -319,14 +373,15 @@ func (r *transportRepository) GetLinesTile(ctx context.Context, lineIDs []string
 		WHERE geom IS NOT NULL
 	`
 
+	idsStr := int64ArrayToString(lineIDs)
 	var tile []byte
-	err := r.db.QueryRowContext(ctx, query, lineIDs).Scan(&tile)
+	err := r.db.QueryRowContext(ctx, query, idsStr, MVTExtent, MVTBuffer).Scan(&tile)
 	if err == sql.ErrNoRows {
 		return []byte{}, nil
 	}
 	if err != nil {
 		r.logger.Error("Failed to generate lines tile",
-			zap.Strings("line_ids", lineIDs),
+			zap.Int64s("line_ids", lineIDs),
 			zap.Error(err))
 		return nil, errors.ErrDatabaseError
 	}
@@ -343,7 +398,9 @@ func (r *transportRepository) GetStationsInRadius(ctx context.Context, lat, lon,
 		stations_in_radius AS (
 			SELECT 
 				s.id, s.osm_id, s.name, s.name_en, s.type,
-				s.lat, s.lon, s.line_ids, s.operator, s.network, s.wheelchair,
+				s.lat, s.lon, 
+				s.line_ids,
+				s.operator, s.network, s.wheelchair,
 				ST_Distance(s.geometry::geography, point.geom) AS distance
 			FROM transport_stations s, point
 			WHERE ST_DWithin(s.geometry::geography, point.geom, $3 * 1000)
@@ -353,10 +410,10 @@ func (r *transportRepository) GetStationsInRadius(ctx context.Context, lat, lon,
 			lat, lon, line_ids, operator, network, wheelchair, distance
 		FROM stations_in_radius
 		ORDER BY distance
-		LIMIT 100
+		LIMIT $4
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm)
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm, LimitStations)
 	if err != nil {
 		r.logger.Error("Failed to get stations in radius",
 			zap.Float64("lat", lat),
@@ -371,12 +428,12 @@ func (r *transportRepository) GetStationsInRadius(ctx context.Context, lat, lon,
 	var stations []*domain.TransportStation
 	for rows.Next() {
 		var s domain.TransportStation
-		var lineIDs []string
 		var distance float64
+		var lineIDsRaw interface{}
 
 		err := rows.Scan(
 			&s.ID, &s.OSMId, &s.Name, &s.NameEn, &s.Type,
-			&s.Lat, &s.Lon, &lineIDs, &s.Operator, &s.Network, &s.Wheelchair,
+			&s.Lat, &s.Lon, &lineIDsRaw, &s.Operator, &s.Network, &s.Wheelchair,
 			&distance,
 		)
 		if err != nil {
@@ -384,7 +441,12 @@ func (r *transportRepository) GetStationsInRadius(ctx context.Context, lat, lon,
 			continue
 		}
 
-		s.LineIDs = lineIDs
+		s.LineIDs, err = scanInt64Array(lineIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse line_ids array", zap.Error(err))
+			continue
+		}
+
 		stations = append(stations, &s)
 	}
 
@@ -408,16 +470,17 @@ func (r *transportRepository) GetLinesInRadius(ctx context.Context, lat, lon, ra
 		)
 		SELECT 
 			id, osm_id, name, ref, type, color, text_color,
-			operator, network, from_station, to_station, station_ids,
+			operator, network, from_station, to_station,
+			station_ids,
 			ST_AsGeoJSON(ST_Intersection(geometry, circle.geom)) as geometry_json
 		FROM transport_lines, circle
 		WHERE geometry && circle.geom
 		  AND ST_Intersects(geometry, circle.geom)
 		ORDER BY name
-		LIMIT 50
+		LIMIT $4
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm)
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, radiusKm, LimitLines)
 	if err != nil {
 		r.logger.Error("Failed to get lines in radius",
 			zap.Float64("lat", lat),
@@ -432,20 +495,25 @@ func (r *transportRepository) GetLinesInRadius(ctx context.Context, lat, lon, ra
 	var lines []*domain.TransportLine
 	for rows.Next() {
 		var l domain.TransportLine
-		var stationIDs []string
 		var geojson string
+		var stationIDsRaw interface{}
 
 		err := rows.Scan(
 			&l.ID, &l.OSMId, &l.Name, &l.Ref, &l.Type,
 			&l.Color, &l.TextColor, &l.Operator, &l.Network,
-			&l.FromStation, &l.ToStation, &stationIDs, &geojson,
+			&l.FromStation, &l.ToStation, &stationIDsRaw, &geojson,
 		)
 		if err != nil {
 			r.logger.Error("Failed to scan line", zap.Error(err))
 			continue
 		}
 
-		l.StationIDs = stationIDs
+		l.StationIDs, err = scanInt64Array(stationIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse station_ids array", zap.Error(err))
+			continue
+		}
+
 		lines = append(lines, &l)
 	}
 
@@ -464,7 +532,7 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geom
 		),
 		circle AS (
-			SELECT ST_Buffer(point.geom, $3 * 1000)::geometry AS geom
+			SELECT ST_Transform(ST_Buffer(point.geom, $3 * 1000)::geometry, 3857) AS geom
 			FROM point
 		),
 		stations_mvt AS (
@@ -472,33 +540,33 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 				s.id, s.name, s.type,
 				array_length(s.line_ids, 1) as line_count,
 				ST_AsMVTGeom(
-					s.geometry,
+					ST_Transform(s.geometry, 3857),
 					circle.geom,
-					4096,
-					256,
+					$4,
+					$5,
 					true
 				) AS geom
 			FROM transport_stations s, circle
-			WHERE s.geometry && circle.geom
-			  AND ST_Contains(circle.geom, s.geometry)
+			WHERE ST_Transform(s.geometry, 3857) && circle.geom
+			  AND ST_Contains(circle.geom, ST_Transform(s.geometry, 3857))
 			ORDER BY s.name
-			LIMIT 100
+			LIMIT $6
 		),
 		lines_mvt AS (
 			SELECT 
 				l.id, l.name, l.ref, l.type, l.color,
 				ST_AsMVTGeom(
-					ST_Intersection(l.geometry, circle.geom),
+					ST_Intersection(ST_Transform(l.geometry, 3857), circle.geom),
 					circle.geom,
-					4096,
-					256,
+					$4,
+					$5,
 					true
 				) AS geom
 			FROM transport_lines l, circle
-			WHERE l.geometry && circle.geom
-			  AND ST_Intersects(l.geometry, circle.geom)
+			WHERE ST_Transform(l.geometry, 3857) && circle.geom
+			  AND ST_Intersects(ST_Transform(l.geometry, 3857), circle.geom)
 			ORDER BY l.name
-			LIMIT 50
+			LIMIT $7
 		)
 		SELECT 
 			COALESCE(ST_AsMVT(stations_mvt.*, 'transport_stations'), ''::bytea) ||
@@ -508,7 +576,7 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 	`
 
 	var tile []byte
-	err := r.db.QueryRowContext(ctx, query, lon, lat, radiusKm).Scan(&tile)
+	err := r.db.QueryRowContext(ctx, query, lon, lat, radiusKm, MVTExtent, MVTBuffer, LimitStations, LimitLines).Scan(&tile)
 	if err == sql.ErrNoRows {
 		return []byte{}, nil
 	}

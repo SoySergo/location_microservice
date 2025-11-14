@@ -59,17 +59,8 @@ func (uc *SearchUseCase) Search(ctx context.Context, req dto.SearchRequest) (*dt
 	// Преобразование в response
 	results := make([]dto.SearchResult, 0, len(boundaries))
 	for _, b := range boundaries {
-		results = append(results, dto.SearchResult{
-			ID:         b.ID,
-			Name:       b.Name,
-			Type:       b.Type,
-			AdminLevel: b.AdminLevel,
-			CenterPoint: domain.Point{
-				Lat: b.CenterLat,
-				Lon: b.CenterLon,
-			},
-			AreaSqKm: b.AreaSqKm,
-		})
+		// Convert to DTO with string ID
+		results = append(results, dto.ConvertSearchResult(b))
 	}
 
 	return &dto.SearchResponse{

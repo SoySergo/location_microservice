@@ -68,15 +68,8 @@ func (uc *POIUseCase) SearchByRadius(
 	for _, poi := range pois {
 		distance := utils.HaversineDistance(req.Lat, req.Lon, poi.Lat, poi.Lon) * 1000 // to meters
 
-		result = append(result, dto.POISimple{
-			ID:          poi.ID,
-			Name:        poi.Name,
-			Category:    poi.Category,
-			Subcategory: poi.Subcategory,
-			Lat:         poi.Lat,
-			Lon:         poi.Lon,
-			Distance:    distance,
-		})
+		// Convert to DTO with string ID
+		result = append(result, dto.ConvertPOI(poi, distance))
 	}
 
 	return &dto.RadiusPOIResponse{
@@ -95,7 +88,7 @@ func (uc *POIUseCase) GetCategories(ctx context.Context, lang string) ([]*domain
 	return categories, nil
 }
 
-func (uc *POIUseCase) GetSubcategories(ctx context.Context, categoryID string, lang string) ([]*domain.POISubcategory, error) {
+func (uc *POIUseCase) GetSubcategories(ctx context.Context, categoryID int64, lang string) ([]*domain.POISubcategory, error) {
 	subcategories, err := uc.poiRepo.GetSubcategories(ctx, categoryID)
 	if err != nil {
 		uc.logger.Error("Failed to get POI subcategories", zap.Error(err))
@@ -169,17 +162,17 @@ func (uc *POIUseCase) GetPOIRadiusTile(
 // GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
 func (uc *POIUseCase) GetPOIByBoundaryTile(
 	ctx context.Context,
-	boundaryID string,
+	boundaryID int64,
 	categories []string,
 ) ([]byte, error) {
-	if boundaryID == "" {
+	if boundaryID == 0 {
 		return nil, errors.ErrInvalidBoundaryID
 	}
 
 	tile, err := uc.poiRepo.GetPOIByBoundaryTile(ctx, boundaryID, categories)
 	if err != nil {
 		uc.logger.Error("Failed to generate POI boundary tile",
-			zap.String("boundary_id", boundaryID),
+			zap.Int64("boundary_id", boundaryID),
 			zap.Error(err),
 		)
 		return nil, err

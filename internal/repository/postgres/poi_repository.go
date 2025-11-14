@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -25,7 +26,7 @@ func NewPOIRepository(db *DB) repository.POIRepository {
 	}
 }
 
-func (r *poiRepository) GetByID(ctx context.Context, id string) (*domain.POI, error) {
+func (r *poiRepository) GetByID(ctx context.Context, id int64) (*domain.POI, error) {
 	query := `
 		SELECT 
 			id, osm_id, name, name_en, name_es, name_ca, name_ru, name_uk,
@@ -36,21 +37,32 @@ func (r *poiRepository) GetByID(ctx context.Context, id string) (*domain.POI, er
 	`
 
 	var poi domain.POI
+	var tagsJSON []byte
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&poi.ID, &poi.OSMId, &poi.Name,
 		&poi.NameEn, &poi.NameEs, &poi.NameCa, &poi.NameRu, &poi.NameUk,
 		&poi.NameFr, &poi.NamePt, &poi.NameIt, &poi.NameDe,
 		&poi.Category, &poi.Subcategory, &poi.Lat, &poi.Lon,
 		&poi.Address, &poi.Phone, &poi.Website, &poi.OpeningHours,
-		&poi.Wheelchair, &poi.Tags,
+		&poi.Wheelchair, &tagsJSON,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, errors.ErrLocationNotFound
 	}
 	if err != nil {
-		r.logger.Error("Failed to get POI by ID", zap.String("id", id), zap.Error(err))
+		r.logger.Error("Failed to get POI by ID", zap.Int64("id", id), zap.Error(err))
 		return nil, errors.ErrDatabaseError
+	}
+
+	// Unmarshal tags JSON if present
+	if len(tagsJSON) > 0 {
+		tags := make(map[string]string)
+		if err := json.Unmarshal(tagsJSON, &tags); err != nil {
+			r.logger.Warn("Failed to unmarshal tags", zap.Int64("id", id), zap.Error(err))
+		} else {
+			poi.Tags = tags
+		}
 	}
 
 	return &poi, nil
@@ -69,10 +81,12 @@ func (r *poiRepository) GetNearby(
 			id, osm_id, name, category, subcategory, lat, lon,
 			ST_Distance(geometry::geography, point.geom) AS distance
 		FROM pois, point
-		WHERE ST_DWithin(geometry::geography, point.geom, $3 * 1000)
+		WHERE ST_DWithin(geometry::geography, point.geom, $3)
 	`
 
-	args := []interface{}{lon, lat, radiusKm}
+	// Convert radius from km to meters
+	radiusMeters := radiusKm * 1000
+	args := []interface{}{lon, lat, radiusMeters}
 	argIdx := 4
 
 	if len(categories) > 0 {
@@ -81,7 +95,8 @@ func (r *poiRepository) GetNearby(
 		argIdx++
 	}
 
-	query += " ORDER BY distance LIMIT 100"
+	query += fmt.Sprintf(" ORDER BY distance LIMIT $%d", argIdx)
+	args = append(args, LimitPOIs)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -319,7 +334,7 @@ func (r *poiRepository) GetCategories(ctx context.Context) ([]*domain.POICategor
 	return categories, nil
 }
 
-func (r *poiRepository) GetSubcategories(ctx context.Context, categoryID string) ([]*domain.POISubcategory, error) {
+func (r *poiRepository) GetSubcategories(ctx context.Context, categoryID int64) ([]*domain.POISubcategory, error) {
 	query := `
 		SELECT id, category_id, code, name_en, icon, sort_order
 		FROM poi_subcategories
@@ -349,12 +364,15 @@ func (r *poiRepository) GetSubcategories(ctx context.Context, categoryID string)
 
 // GetPOIRadiusTile генерирует MVT тайл с POI в радиусе от точки
 func (r *poiRepository) GetPOIRadiusTile(ctx context.Context, lat, lon, radiusKm float64, categories []string) ([]byte, error) {
+	// Convert radius from km to meters
+	radiusMeters := radiusKm * 1000
+
 	query := `
 		WITH point AS (
 			SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geom
 		),
 		circle AS (
-			SELECT ST_Buffer(point.geom, $3 * 1000)::geometry AS geom
+			SELECT ST_Buffer(point.geom, $3)::geometry AS geom
 			FROM point
 		),
 		mvt_geom AS (
@@ -363,8 +381,8 @@ func (r *poiRepository) GetPOIRadiusTile(ctx context.Context, lat, lon, radiusKm
 				ST_AsMVTGeom(
 					p.geometry,
 					circle.geom,
-					4096,
-					256,
+					$4,
+					$5,
 					true
 				) AS geom
 			FROM pois p, circle
@@ -372,21 +390,25 @@ func (r *poiRepository) GetPOIRadiusTile(ctx context.Context, lat, lon, radiusKm
 			  AND ST_Contains(circle.geom, p.geometry)
 	`
 
-	args := []interface{}{lon, lat, radiusKm}
+	args := []interface{}{lon, lat, radiusMeters, MVTExtent, MVTBuffer}
 
+	limitArg := "$6"
 	if len(categories) > 0 {
-		query += " AND p.category = ANY($4)"
+		query += " AND p.category = ANY($6)"
 		args = append(args, pq.Array(categories))
+		limitArg = "$7"
 	}
 
-	query += `
+	query += fmt.Sprintf(`
 			ORDER BY p.name
-			LIMIT 200
+			LIMIT %s
 		)
 		SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
 		FROM mvt_geom
 		WHERE geom IS NOT NULL
-	`
+	`, limitArg)
+
+	args = append(args, LimitPOIsRadius)
 
 	var tile []byte
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
@@ -422,24 +444,25 @@ func (r *poiRepository) GetPOITile(ctx context.Context, z, x, y int, categories 
 				ST_AsMVTGeom(
 					p.geometry,
 					bounds.geom,
-					4096,
-					256,
+					$4,
+					$5,
 					true
 				) AS geom
 			FROM pois p, bounds
 			WHERE p.geometry && bounds.geom
 	`
 
-	args := []interface{}{z, x, y}
+	args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
 
 	// Фильтрация по категориям если указаны
 	if len(categories) > 0 {
-		query += " AND p.category = ANY($4)"
+		query += " AND p.category = ANY($6)"
 		args = append(args, pq.Array(categories))
 	}
 
 	// Адаптивная фильтрация и лимит по zoom level
-	query += `
+	poiLimit := getPOILimitByZoom(z)
+	query += fmt.Sprintf(`
 			ORDER BY 
 				CASE p.category 
 					WHEN 'landmark' THEN 1
@@ -449,17 +472,12 @@ func (r *poiRepository) GetPOITile(ctx context.Context, z, x, y int, categories 
 					ELSE 5
 				END,
 				p.name
-			LIMIT CASE 
-				WHEN $1 < 10 THEN 50
-				WHEN $1 < 13 THEN 200
-				WHEN $1 < 15 THEN 500
-				ELSE 1000
-			END
+			LIMIT %d
 		)
 		SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
 		FROM mvt_geom
 		WHERE geom IS NOT NULL
-	`
+	`, poiLimit)
 
 	var tile []byte
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
@@ -480,7 +498,7 @@ func (r *poiRepository) GetPOITile(ctx context.Context, z, x, y int, categories 
 }
 
 // GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
-func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID string, categories []string) ([]byte, error) {
+func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID int64, categories []string) ([]byte, error) {
 	query := `
 		WITH 
 		boundary AS (
@@ -495,8 +513,8 @@ func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID str
 				ST_AsMVTGeom(
 					p.geometry,
 					b.geometry,
-					4096,
-					256,
+					$2,
+					$3,
 					true
 				) AS geom
 			FROM pois p, boundary b
@@ -504,15 +522,15 @@ func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID str
 			  AND ST_Contains(b.geometry, p.geometry)
 	`
 
-	args := []interface{}{boundaryID}
+	args := []interface{}{boundaryID, MVTExtent, MVTBuffer}
 
 	// Фильтрация по категориям если указаны
 	if len(categories) > 0 {
-		query += " AND p.category = ANY($2)"
+		query += " AND p.category = ANY($4)"
 		args = append(args, pq.Array(categories))
 	}
 
-	query += `
+	query += fmt.Sprintf(`
 			ORDER BY 
 				CASE p.category 
 					WHEN 'landmark' THEN 1
@@ -522,12 +540,12 @@ func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID str
 					ELSE 5
 				END,
 				p.name
-			LIMIT 1000
+			LIMIT %d
 		)
 		SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
 		FROM mvt_geom
 		WHERE geom IS NOT NULL
-	`
+	`, LimitPOIsCategory)
 
 	var tile []byte
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
@@ -536,7 +554,7 @@ func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID str
 	}
 	if err != nil {
 		r.logger.Error("Failed to generate POI boundary tile",
-			zap.String("boundary_id", boundaryID),
+			zap.Int64("boundary_id", boundaryID),
 			zap.Error(err),
 		)
 		return nil, errors.ErrDatabaseError
