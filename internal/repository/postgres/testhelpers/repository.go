@@ -35,3 +35,9 @@ func NewEnvironmentRepositoryForTest(db *sqlx.DB, logger *zap.Logger) repository
 	pgDB := NewDBForTest(db, logger)
 	return postgres.NewEnvironmentRepository(pgDB)
 }
+
+// NewStatsRepositoryForTest creates a stats repository with test database and logger
+func NewStatsRepositoryForTest(db *sqlx.DB, logger *zap.Logger) repository.StatsRepository {
+	pgDB := NewDBForTest(db, logger)
+	return postgres.NewStatsRepository(pgDB, logger)
+}

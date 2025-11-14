@@ -245,15 +245,19 @@ func (r *statsRepository) getCoverageStats(ctx context.Context) (*domain.Coverag
 
 	query := `
 		SELECT 
-			ST_XMin(extent) as min_lon,
-			ST_YMin(extent) as min_lat,
-			ST_XMax(extent) as max_lon,
-			ST_YMax(extent) as max_lat,
-			ST_Area(extent::geography) / 1000000 as area_sqkm,
-			ST_X(ST_Centroid(extent)) as center_lon,
-			ST_Y(ST_Centroid(extent)) as center_lat
+			ST_XMin(extent_box) as min_lon,
+			ST_YMin(extent_box) as min_lat,
+			ST_XMax(extent_box) as max_lon,
+			ST_YMax(extent_box) as max_lat,
+			ST_Area(ST_MakeEnvelope(
+				ST_XMin(extent_box), ST_YMin(extent_box),
+				ST_XMax(extent_box), ST_YMax(extent_box),
+				4326
+			)::geography) / 1000000 as area_sqkm,
+			(ST_XMin(extent_box) + ST_XMax(extent_box)) / 2 as center_lon,
+			(ST_YMin(extent_box) + ST_YMax(extent_box)) / 2 as center_lat
 		FROM (
-			SELECT ST_Extent(geometry) as extent
+			SELECT ST_Extent(geometry) as extent_box
 			FROM admin_boundaries
 			WHERE admin_level = 2
 		) as subquery
