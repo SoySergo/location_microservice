@@ -55,7 +55,7 @@ type LogConfig struct {
 type WorkerConfig struct {
 	Enabled           bool
 	ConsumerGroup     string
-	StreamReadTimeout time.Duration
+	StreamReadTimeout time.Duration // Timeout for reading from stream (in milliseconds from env)
 	MaxRetries        int
 	TransportRadius   float64
 	TransportTypes    []string

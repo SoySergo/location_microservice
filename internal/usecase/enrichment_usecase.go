@@ -231,11 +231,10 @@ func (uc *EnrichmentUseCase) findNearestTransport(ctx context.Context, lat, lon 
 		return nil, fmt.Errorf("failed to get nearest stations: %w", err)
 	}
 
-	// Преобразуем в формат NearestStation
+	// Преобразуем в формат NearestStation и вычисляем точное расстояние
 	result := make([]domain.NearestStation, 0, len(stations))
 	for _, station := range stations {
-		// Вычисляем расстояние (уже есть в поле distance из запроса)
-		// GetNearestStations возвращает stations с координатами, нужно вычислить distance
+		// Вычисляем расстояние от координат свойства до станции
 		distance := uc.calculateDistance(lat, lon, station.Lat, station.Lon)
 
 		result = append(result, domain.NearestStation{

@@ -114,10 +114,11 @@ func (w *LocationEnrichmentWorker) processMessage(ctx context.Context, msg domai
 	if err := json.Unmarshal([]byte(msg.Data), &event); err != nil {
 		logger.Error("Failed to unmarshal event",
 			zap.String("message_id", msg.ID),
+			zap.String("raw_data", msg.Data),
 			zap.Error(err))
-		// Публикуем ответ с ошибкой, но без property_id
-		w.publishErrorWithoutID(ctx, fmt.Sprintf("failed to unmarshal event: %v", err))
-		return nil // Не возвращаем ошибку, чтобы ACK сообщение
+		// Не публикуем событие с ошибкой для неизвестного property_id
+		// Сообщение будет ACK'нуто и пропущено (dead letter pattern)
+		return nil
 	}
 
 	logger.Info("Processing location enrichment",
@@ -158,20 +159,6 @@ func (w *LocationEnrichmentWorker) publishError(ctx context.Context, propertyID 
 	result := domain.LocationDoneEvent{
 		PropertyID: propertyID,
 		Error:      errorMsg,
-	}
-
-	if err := w.streamRepo.PublishToStream(ctx, domain.StreamLocationDone, &result); err != nil {
-		logger.Error("Failed to publish error",
-			zap.Error(err))
-	}
-}
-
-// publishErrorWithoutID публикует событие с ошибкой без property_id
-func (w *LocationEnrichmentWorker) publishErrorWithoutID(ctx context.Context, errorMsg string) {
-	logger := w.Logger()
-
-	result := domain.LocationDoneEvent{
-		Error: errorMsg,
 	}
 
 	if err := w.streamRepo.PublishToStream(ctx, domain.StreamLocationDone, &result); err != nil {
