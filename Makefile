@@ -1,5 +1,6 @@
 .PHONY: help build run migrate-up migrate-down migrate-force test lint clean dev run-api test-health test-endpoints
 .PHONY: test-db-up test-db-down test-db-reset test-integration test-integration-coverage
+.PHONY: build-worker run-worker
 
 DB_DSN := "postgres://postgres:postgres@localhost:5434/location_microservice?sslmode=disable"
 TEST_DB_DSN := "postgres://postgres:postgres@localhost:5433/location_test?sslmode=disable"
@@ -10,6 +11,8 @@ help:
 	@echo "  make run          - Run the API server"
 	@echo "  make dev          - Start Docker, apply migrations, run server"
 	@echo "  make run-api      - Run API server (alias for run)"
+	@echo "  make build-worker - Build the worker"
+	@echo "  make run-worker   - Run the worker"
 	@echo "  make migrate-up   - Apply database migrations"
 	@echo "  make migrate-down - Rollback migrations"
 	@echo "  make migrate-force- Force migration version"
@@ -29,8 +32,14 @@ help:
 build:
 	go build -o bin/api cmd/api/main.go
 
+build-worker:
+	go build -o bin/worker cmd/worker/main.go
+
 run:
 	go run cmd/api/main.go
+
+run-worker:
+	go run cmd/worker/main.go
 
 dev:
 	@echo "Starting Docker Compose services..."
@@ -81,6 +90,7 @@ lint:
 
 clean:
 	rm -rf bin/
+	rm -f coverage.out coverage.html
 
 # Test database commands
 test-db-up:

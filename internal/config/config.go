@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -13,6 +14,7 @@ type Config struct {
 	Redis    RedisConfig
 	Cache    CacheConfig
 	Log      LogConfig
+	Worker   WorkerConfig
 }
 
 type ServerConfig struct {
@@ -48,6 +50,15 @@ type CacheConfig struct {
 
 type LogConfig struct {
 	Level string
+}
+
+type WorkerConfig struct {
+	Enabled           bool
+	ConsumerGroup     string
+	StreamReadTimeout time.Duration // Timeout for reading from stream (in milliseconds from env)
+	MaxRetries        int
+	TransportRadius   float64
+	TransportTypes    []string
 }
 
 func Load() (*Config, error) {
@@ -89,9 +100,48 @@ func Load() (*Config, error) {
 		Log: LogConfig{
 			Level: viper.GetString("LOG_LEVEL"),
 		},
+		Worker: WorkerConfig{
+			Enabled:           viper.GetBool("WORKER_ENABLED"),
+			ConsumerGroup:     viper.GetString("WORKER_CONSUMER_GROUP"),
+			StreamReadTimeout: time.Duration(viper.GetInt("WORKER_STREAM_READ_TIMEOUT")) * time.Millisecond,
+			MaxRetries:        viper.GetInt("WORKER_MAX_RETRIES"),
+			TransportRadius:   viper.GetFloat64("WORKER_TRANSPORT_RADIUS"),
+			TransportTypes:    parseTransportTypes(viper.GetString("WORKER_TRANSPORT_TYPES")),
+		},
+	}
+
+	// Set default values if not provided
+	if cfg.Worker.ConsumerGroup == "" {
+		cfg.Worker.ConsumerGroup = "location-enrichment-workers"
+	}
+	if cfg.Worker.StreamReadTimeout == 0 {
+		cfg.Worker.StreamReadTimeout = 5000 * time.Millisecond
+	}
+	if cfg.Worker.MaxRetries == 0 {
+		cfg.Worker.MaxRetries = 3
+	}
+	if cfg.Worker.TransportRadius == 0 {
+		cfg.Worker.TransportRadius = 1000
+	}
+	if len(cfg.Worker.TransportTypes) == 0 {
+		cfg.Worker.TransportTypes = []string{"metro", "train", "tram", "bus"}
 	}
 
 	return cfg, nil
+}
+
+func parseTransportTypes(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func (c *Config) GetServerAddr() string {
