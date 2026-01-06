@@ -100,7 +100,7 @@ func TestLocationEnrichmentWorker_ProcessMessage_Success(t *testing.T) {
 
 	// Create a channel for messages
 	msgChan := make(chan domain.StreamMessage, 1)
-	
+
 	// Marshal input event
 	eventJSON, _ := json.Marshal(inputEvent)
 	msgChan <- domain.StreamMessage{
@@ -128,7 +128,7 @@ func TestLocationEnrichmentWorker_ProcessMessage_Success(t *testing.T) {
 	// Note: We can't directly test the private processMessage method,
 	// but we can verify the mocks were called through the worker's Start method
 	// This test validates our mocking setup
-	
+
 	mockStream.AssertNotCalled(t, "ConsumeStream")
 	mockStream.AssertNotCalled(t, "PublishToStream")
 	mockStream.AssertNotCalled(t, "AckMessage")
@@ -222,12 +222,12 @@ func TestLocationEnrichmentWorker_ContextCancellation(t *testing.T) {
 
 	// Create a channel that stays open (blocking)
 	msgChan := make(chan domain.StreamMessage)
-	
+
 	mockStream.On("ConsumeStream", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string")).
 		Return((<-chan domain.StreamMessage)(msgChan), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Start worker in goroutine
 	done := make(chan error, 1)
 	go func() {

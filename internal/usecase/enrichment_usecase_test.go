@@ -172,7 +172,7 @@ func TestEnrichmentUseCase_EnrichLocation_WithCityName(t *testing.T) {
 	mockBoundary := &MockBoundaryRepository{}
 	mockTransport := &MockTransportRepository{}
 	logger := zap.NewNop()
-	
+
 	uc := usecase.NewEnrichmentUseCase(
 		mockBoundary,
 		mockTransport,
@@ -279,7 +279,7 @@ func TestEnrichmentUseCase_EnrichLocation_WithCoordinatesOnly(t *testing.T) {
 	mockBoundary := &MockBoundaryRepository{}
 	mockTransport := &MockTransportRepository{}
 	logger := zap.NewNop()
-	
+
 	uc := usecase.NewEnrichmentUseCase(
 		mockBoundary,
 		mockTransport,
@@ -301,10 +301,10 @@ func TestEnrichmentUseCase_EnrichLocation_WithCoordinatesOnly(t *testing.T) {
 
 	// Mock reverse geocoding - returns boundaries for all levels
 	boundaries := []*domain.AdminBoundary{
-		{ID: 1, AdminLevel: 2, Name: "Spain"},         // Country
-		{ID: 20, AdminLevel: 4, Name: "Catalonia"},    // Region
+		{ID: 1, AdminLevel: 2, Name: "Spain"},               // Country
+		{ID: 20, AdminLevel: 4, Name: "Catalonia"},          // Region
 		{ID: 50, AdminLevel: 6, Name: "Barcelona Province"}, // Province
-		{ID: 100, AdminLevel: 8, Name: "Barcelona"},   // City
+		{ID: 100, AdminLevel: 8, Name: "Barcelona"},         // City
 	}
 	mockBoundary.On("GetByPoint", mock.Anything, lat, lon).
 		Return(boundaries, nil)
@@ -347,7 +347,7 @@ func TestEnrichmentUseCase_EnrichLocation_LocationNotFound(t *testing.T) {
 	mockBoundary := &MockBoundaryRepository{}
 	mockTransport := &MockTransportRepository{}
 	logger := zap.NewNop()
-	
+
 	uc := usecase.NewEnrichmentUseCase(
 		mockBoundary,
 		mockTransport,
@@ -387,7 +387,7 @@ func TestEnrichmentUseCase_EnrichLocation_WithoutCoordinates(t *testing.T) {
 	mockBoundary := &MockBoundaryRepository{}
 	mockTransport := &MockTransportRepository{}
 	logger := zap.NewNop()
-	
+
 	uc := usecase.NewEnrichmentUseCase(
 		mockBoundary,
 		mockTransport,
@@ -414,11 +414,11 @@ func TestEnrichmentUseCase_EnrichLocation_WithoutCoordinates(t *testing.T) {
 	}
 	mockBoundary.On("SearchByText", mock.Anything, "Barcelona", "", []int{8}, 1).
 		Return([]*domain.AdminBoundary{barcelonaCity}, nil)
-	
+
 	// Mock getting the city boundary
 	mockBoundary.On("GetByID", mock.Anything, int64(100)).
 		Return(barcelonaCity, nil)
-	
+
 	// Mock parent (country)
 	spain := &domain.AdminBoundary{
 		ID:         1,
@@ -454,7 +454,7 @@ func TestEnrichmentUseCase_EnrichLocation_TransportLookupFails(t *testing.T) {
 	mockBoundary := &MockBoundaryRepository{}
 	mockTransport := &MockTransportRepository{}
 	logger := zap.NewNop()
-	
+
 	uc := usecase.NewEnrichmentUseCase(
 		mockBoundary,
 		mockTransport,
@@ -487,7 +487,7 @@ func TestEnrichmentUseCase_EnrichLocation_TransportLookupFails(t *testing.T) {
 		Return([]*domain.AdminBoundary{barcelonaCity}, nil)
 	mockBoundary.On("GetByID", mock.Anything, int64(100)).
 		Return(barcelonaCity, nil)
-	
+
 	// Mock parent (country)
 	spain := &domain.AdminBoundary{
 		ID:         1,

@@ -177,7 +177,7 @@ func TestStreamRepository_ConsumeStream(t *testing.T) {
 	select {
 	case msg := <-msgChan:
 		assert.NotEmpty(t, msg.ID)
-		
+
 		// Verify message content
 		var receivedEvent domain.LocationEnrichEvent
 		err = json.Unmarshal([]byte(msg.Data), &receivedEvent)
@@ -185,7 +185,7 @@ func TestStreamRepository_ConsumeStream(t *testing.T) {
 		assert.Equal(t, propertyID, receivedEvent.PropertyID)
 		assert.Equal(t, "Spain", receivedEvent.Country)
 		assert.Equal(t, "Barcelona", *receivedEvent.City)
-		
+
 	case <-time.After(3 * time.Second):
 		t.Fatal("Timeout waiting for message")
 	}
