@@ -24,6 +24,12 @@ type LocationEnrichEvent struct {
 	Longitude    *float64  `json:"longitude,omitempty"`
 }
 
+// HasStreetAddress проверяет наличие полного адреса (улица + дом)
+func (e *LocationEnrichEvent) HasStreetAddress() bool {
+	return e.Street != nil && *e.Street != "" &&
+		e.HouseNumber != nil && *e.HouseNumber != ""
+}
+
 // LocationDoneEvent - результат обогащения
 type LocationDoneEvent struct {
 	PropertyID       uuid.UUID         `json:"property_id"`
@@ -50,6 +56,15 @@ type NearestStation struct {
 	Type      string  `json:"type"`
 	Distance  float64 `json:"distance"`
 	LineIDs   []int64 `json:"line_ids"`
+}
+
+// LocationDoneEventExtended - расширенный результат обогащения с инфраструктурой
+type LocationDoneEventExtended struct {
+	PropertyID       uuid.UUID              `json:"property_id"`
+	EnrichedLocation *EnrichedLocation      `json:"enriched_location,omitempty"`
+	NearestTransport []NearestStation       `json:"nearest_transport,omitempty"`
+	Infrastructure   *InfrastructureResult  `json:"infrastructure,omitempty"`
+	Error            string                 `json:"error,omitempty"`
 }
 
 // StreamMessage - сообщение из Redis Stream
