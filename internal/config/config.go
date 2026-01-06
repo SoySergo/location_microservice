@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig
 	Redis    RedisConfig
 	Cache    CacheConfig
+	Tile     TileConfig
 	Log      LogConfig
 	Worker   WorkerConfig
 	Mapbox   MapboxConfig
@@ -45,8 +46,14 @@ type RedisConfig struct {
 }
 
 type CacheConfig struct {
-	TilesCacheTTL  time.Duration
-	SearchCacheTTL time.Duration
+	TilesCacheTTL         time.Duration
+	SearchCacheTTL        time.Duration
+	POITileCacheTTL       time.Duration
+	TransportTileCacheTTL time.Duration
+}
+
+type TileConfig struct {
+	POIMaxFeatures int
 }
 
 type LogConfig struct {
@@ -111,8 +118,13 @@ func Load() (*Config, error) {
 			DB:       viper.GetInt("REDIS_DB"),
 		},
 		Cache: CacheConfig{
-			TilesCacheTTL:  time.Duration(viper.GetInt("TILES_CACHE_TTL")) * time.Second,
-			SearchCacheTTL: time.Duration(viper.GetInt("SEARCH_CACHE_TTL")) * time.Second,
+			TilesCacheTTL:         time.Duration(viper.GetInt("TILES_CACHE_TTL")) * time.Second,
+			SearchCacheTTL:        time.Duration(viper.GetInt("SEARCH_CACHE_TTL")) * time.Second,
+			POITileCacheTTL:       time.Duration(viper.GetInt("POI_TILE_CACHE_TTL")) * time.Second,
+			TransportTileCacheTTL: time.Duration(viper.GetInt("TRANSPORT_TILE_CACHE_TTL")) * time.Second,
+		},
+		Tile: TileConfig{
+			POIMaxFeatures: viper.GetInt("POI_TILE_MAX_FEATURES"),
 		},
 		Log: LogConfig{
 			Level: viper.GetString("LOG_LEVEL"),
@@ -191,6 +203,15 @@ func Load() (*Config, error) {
 	if cfg.Mapbox.BatchInterval == 0 {
 		cfg.Mapbox.BatchInterval = 1000 * time.Millisecond // 1 second
 	}
+	if cfg.Cache.POITileCacheTTL == 0 {
+		cfg.Cache.POITileCacheTTL = time.Hour // 1 hour default
+	}
+	if cfg.Cache.TransportTileCacheTTL == 0 {
+		cfg.Cache.TransportTileCacheTTL = time.Hour // 1 hour default
+	}
+	if cfg.Tile.POIMaxFeatures == 0 {
+		cfg.Tile.POIMaxFeatures = 1000 // Default max features per tile
+	}
 
 	return cfg, nil
 }
@@ -228,3 +249,4 @@ func (c *Config) GetDatabaseDSN() string {
 func (c *Config) GetRedisAddr() string {
 	return fmt.Sprintf("%s:%d", c.Redis.Host, c.Redis.Port)
 }
+

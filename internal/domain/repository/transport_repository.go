@@ -37,4 +37,10 @@ type TransportRepository interface {
 
 	// GetTransportRadiusTile генерирует MVT тайл с транспортом в радиусе от точки
 	GetTransportRadiusTile(ctx context.Context, lat, lon, radiusKm float64) ([]byte, error)
+
+	// GetTransportTileByTypes генерирует MVT тайл для транспорта с фильтрацией по типам
+	GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error)
+
+	// GetLinesByStationID возвращает линии для станции (для hover логики)
+	GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error)
 }

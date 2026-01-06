@@ -34,4 +34,7 @@ type POIRepository interface {
 
 	// GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
 	GetPOIByBoundaryTile(ctx context.Context, boundaryID int64, categories []string) ([]byte, error)
+
+	// GetPOITileByCategories генерирует MVT тайл с POI по координатам тайла с фильтрацией по категориям и подкатегориям
+	GetPOITileByCategories(ctx context.Context, z, x, y int, categories, subcategories []string) ([]byte, error)
 }

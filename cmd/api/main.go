@@ -114,6 +114,14 @@ func main() {
 		cfg.Cache.TilesCacheTTL,
 	)
 
+	poiTileUC := usecase.NewPOITileUseCase(
+		poiRepo,
+		cacheRepo,
+		log,
+		cfg.Cache.POITileCacheTTL,
+		cfg.Tile.POIMaxFeatures,
+	)
+
 	statsUC := usecase.NewStatsUseCase(
 		statsRepo,
 		cacheRepo,
@@ -127,6 +135,7 @@ func main() {
 	transportHandler := handler.NewTransportHandler(transportUC, log)
 	poiHandler := handler.NewPOIHandler(poiUC, log)
 	tileHandler := handler.NewTileHandler(tileUC, log)
+	poiTileHandler := handler.NewPOITileHandler(poiTileUC, log)
 	statsHandler := handler.NewStatsHandler(statsUC, log)
 
 	log.Info("HTTP handlers initialized")
@@ -139,6 +148,7 @@ func main() {
 		transportHandler,
 		poiHandler,
 		tileHandler,
+		poiTileHandler,
 		statsHandler,
 	)
 
