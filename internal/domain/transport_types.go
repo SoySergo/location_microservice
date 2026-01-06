@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 // Transport type constants
 const (
 	TransportTypeMetro        = "metro"
@@ -66,16 +68,10 @@ func ClassifyTrainStation(network string) string {
 	}
 	
 	for pattern, transportType := range NetworkPatterns {
-		if contains(network, pattern) {
+		if strings.Contains(network, pattern) {
 			return transportType
 		}
 	}
 	
 	return TransportTypeTrain
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		(s == substr || 
-		 (len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr)))
 }

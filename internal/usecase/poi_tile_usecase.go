@@ -10,6 +10,7 @@ import (
 
 	"github.com/location-microservice/internal/domain"
 	"github.com/location-microservice/internal/domain/repository"
+	"github.com/location-microservice/internal/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -42,16 +43,16 @@ func NewPOITileUseCase(
 
 // GetPOITile возвращает MVT тайл с POI с фильтрацией по категориям и подкатегориям
 func (uc *POITileUseCase) GetPOITile(ctx context.Context, z, x, y int, categories, subcategories []string) ([]byte, error) {
-	// Валидация zoom level
+	// Валидация zoom level (consistent with existing tile endpoints)
 	if z < 0 || z > 18 {
-		return nil, fmt.Errorf("invalid zoom level: must be between 0 and 18")
+		return nil, errors.ErrInvalidZoom
 	}
 
 	// Валидация категорий
 	if len(categories) > 0 {
 		for _, cat := range categories {
 			if !domain.IsValidPOICategory(cat) {
-				return nil, fmt.Errorf("invalid category: %s", cat)
+				return nil, errors.New("INVALID_POI_CATEGORY", fmt.Sprintf("invalid category: %s", cat), 400)
 			}
 		}
 	}
