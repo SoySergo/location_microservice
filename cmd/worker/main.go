@@ -85,14 +85,14 @@ func main() {
 
 	// 7. Initialize worker (basic or extended based on configuration)
 	var locationWorker worker.Worker
+	var batchScheduler *usecase.MapboxBatchScheduler
 
 	if cfg.Worker.InfrastructureEnabled {
 		log.Info("Infrastructure enrichment is enabled, using extended worker",
 			zap.Int("max_metro", cfg.Worker.MaxMetro),
 			zap.Int("max_train", cfg.Worker.MaxTrain),
-			zap.Int("max_tram", cfg.Worker.MaxTram),
-			zap.Int("max_bus", cfg.Worker.MaxBus),
-			zap.Float64("poi_radius", cfg.Worker.POIRadius))
+			zap.Int("batch_size", cfg.Mapbox.BatchSize),
+			zap.Duration("batch_interval", cfg.Mapbox.BatchInterval))
 
 		// Initialize infrastructure repository
 		infraRepo := postgres.NewInfrastructureRepository(db)
@@ -100,16 +100,21 @@ func main() {
 		// Initialize Mapbox client
 		mapboxClient := mapbox.NewMapboxClient(&cfg.Mapbox, log)
 
+		// Initialize Mapbox batch scheduler (will be started later)
+		batchScheduler = usecase.NewMapboxBatchScheduler(
+			mapboxClient,
+			log,
+			cfg.Mapbox.BatchSize,
+			cfg.Mapbox.BatchInterval,
+		)
+
 		// Initialize infrastructure use case
 		infraUC := usecase.NewInfrastructureUseCase(
 			infraRepo,
-			mapboxClient,
+			batchScheduler,
 			log,
 			cfg.Worker.MaxMetro,
 			cfg.Worker.MaxTrain,
-			cfg.Worker.MaxTram,
-			cfg.Worker.MaxBus,
-			cfg.Worker.POIRadius,
 		)
 
 		// Initialize extended enrichment use case
@@ -147,6 +152,12 @@ func main() {
 	// 9. Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start batch scheduler if enabled
+	if batchScheduler != nil {
+		batchScheduler.Start(ctx)
+		defer batchScheduler.Stop()
+	}
 
 	// Start workers
 	if err := workerManager.Start(ctx); err != nil {

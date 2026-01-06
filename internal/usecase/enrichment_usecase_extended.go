@@ -57,6 +57,7 @@ func (uc *EnrichmentUseCaseExtended) EnrichLocationExtended(
 		// Получаем инфраструктуру
 		infrastructure, err := uc.infraUseCase.GetInfrastructure(
 			ctx,
+			event.PropertyID,
 			*event.Latitude,
 			*event.Longitude,
 			uc.transportRadius,

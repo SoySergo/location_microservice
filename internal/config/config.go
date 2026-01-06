@@ -59,6 +59,8 @@ type MapboxConfig struct {
 	MaxMatrixPoints int
 	WalkingProfile  string
 	RequestTimeout  int
+	BatchSize       int           // Maximum properties to batch together
+	BatchInterval   time.Duration // Time to wait before processing batch
 }
 
 type WorkerConfig struct {
@@ -121,6 +123,8 @@ func Load() (*Config, error) {
 			MaxMatrixPoints: viper.GetInt("MAPBOX_MAX_MATRIX_POINTS"),
 			WalkingProfile:  viper.GetString("MAPBOX_WALKING_PROFILE"),
 			RequestTimeout:  viper.GetInt("MAPBOX_REQUEST_TIMEOUT"),
+			BatchSize:       viper.GetInt("MAPBOX_BATCH_SIZE"),
+			BatchInterval:   time.Duration(viper.GetInt("MAPBOX_BATCH_INTERVAL_MS")) * time.Millisecond,
 		},
 		Worker: WorkerConfig{
 			Enabled:               viper.GetBool("WORKER_ENABLED"),
@@ -180,6 +184,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.Mapbox.RequestTimeout == 0 {
 		cfg.Mapbox.RequestTimeout = 30
+	}
+	if cfg.Mapbox.BatchSize == 0 {
+		cfg.Mapbox.BatchSize = 25
+	}
+	if cfg.Mapbox.BatchInterval == 0 {
+		cfg.Mapbox.BatchInterval = 1000 * time.Millisecond // 1 second
 	}
 
 	return cfg, nil
