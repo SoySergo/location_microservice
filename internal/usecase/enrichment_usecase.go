@@ -13,10 +13,10 @@ import (
 
 // EnrichmentUseCase - use case для обогащения локаций
 type EnrichmentUseCase struct {
-	boundaryRepo   repository.BoundaryRepository
-	transportRepo  repository.TransportRepository
-	logger         *zap.Logger
-	transportTypes []string
+	boundaryRepo    repository.BoundaryRepository
+	transportRepo   repository.TransportRepository
+	logger          *zap.Logger
+	transportTypes  []string
 	transportRadius float64
 }
 
@@ -29,10 +29,10 @@ func NewEnrichmentUseCase(
 	transportRadius float64,
 ) *EnrichmentUseCase {
 	return &EnrichmentUseCase{
-		boundaryRepo:   boundaryRepo,
-		transportRepo:  transportRepo,
-		logger:         logger,
-		transportTypes: transportTypes,
+		boundaryRepo:    boundaryRepo,
+		transportRepo:   transportRepo,
+		logger:          logger,
+		transportTypes:  transportTypes,
 		transportRadius: transportRadius,
 	}
 }

@@ -55,8 +55,8 @@ type Coordinate struct {
 // MatrixResponse - ответ Mapbox Matrix API
 type MatrixResponse struct {
 	Code         string      `json:"code"`
-	Distances    [][]float64 `json:"distances"`    // в метрах
-	Durations    [][]float64 `json:"durations"`    // в секундах
+	Distances    [][]float64 `json:"distances"` // в метрах
+	Durations    [][]float64 `json:"durations"` // в секундах
 	Destinations []Location  `json:"destinations"`
 	Sources      []Location  `json:"sources"`
 }

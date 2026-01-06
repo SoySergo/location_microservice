@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/location-microservice/internal/config"
+	"github.com/location-microservice/internal/infrastructure/mapbox"
 	"github.com/location-microservice/internal/pkg/logger"
 	"github.com/location-microservice/internal/repository/cache"
 	"github.com/location-microservice/internal/repository/postgres"
@@ -43,7 +44,8 @@ func main() {
 		zap.String("consumer_group", cfg.Worker.ConsumerGroup),
 		zap.Int("max_retries", cfg.Worker.MaxRetries),
 		zap.Float64("transport_radius", cfg.Worker.TransportRadius),
-		zap.Strings("transport_types", cfg.Worker.TransportTypes))
+		zap.Strings("transport_types", cfg.Worker.TransportTypes),
+		zap.Bool("infrastructure_enabled", cfg.Worker.InfrastructureEnabled))
 
 	// 3. Connect to PostgreSQL
 	db, err := postgres.New(&cfg.Database, log)
@@ -81,14 +83,61 @@ func main() {
 		cfg.Worker.TransportRadius,
 	)
 
-	// 7. Initialize workers
-	locationWorker := location.NewLocationEnrichmentWorker(
-		streamRepo,
-		enrichmentUC,
-		cfg.Worker.ConsumerGroup,
-		cfg.Worker.MaxRetries,
-		log,
-	)
+	// 7. Initialize worker (basic or extended based on configuration)
+	var locationWorker worker.Worker
+
+	if cfg.Worker.InfrastructureEnabled {
+		log.Info("Infrastructure enrichment is enabled, using extended worker",
+			zap.Int("max_metro", cfg.Worker.MaxMetro),
+			zap.Int("max_train", cfg.Worker.MaxTrain),
+			zap.Int("max_tram", cfg.Worker.MaxTram),
+			zap.Int("max_bus", cfg.Worker.MaxBus),
+			zap.Float64("poi_radius", cfg.Worker.POIRadius))
+
+		// Initialize infrastructure repository
+		infraRepo := postgres.NewInfrastructureRepository(db)
+
+		// Initialize Mapbox client
+		mapboxClient := mapbox.NewMapboxClient(&cfg.Mapbox, log)
+
+		// Initialize infrastructure use case
+		infraUC := usecase.NewInfrastructureUseCase(
+			infraRepo,
+			mapboxClient,
+			log,
+			cfg.Worker.MaxMetro,
+			cfg.Worker.MaxTrain,
+			cfg.Worker.MaxTram,
+			cfg.Worker.MaxBus,
+			cfg.Worker.POIRadius,
+		)
+
+		// Initialize extended enrichment use case
+		enrichmentUCExtended := usecase.NewEnrichmentUseCaseExtended(
+			enrichmentUC,
+			infraUC,
+			log,
+		)
+
+		// Create extended worker
+		locationWorker = location.NewLocationEnrichmentWorkerExtended(
+			streamRepo,
+			enrichmentUCExtended,
+			cfg.Worker.ConsumerGroup,
+			cfg.Worker.MaxRetries,
+			log,
+		)
+	} else {
+		log.Info("Infrastructure enrichment is disabled, using basic worker")
+		// Create basic worker
+		locationWorker = location.NewLocationEnrichmentWorker(
+			streamRepo,
+			enrichmentUC,
+			cfg.Worker.ConsumerGroup,
+			cfg.Worker.MaxRetries,
+			log,
+		)
+	}
 
 	// 8. Create worker manager and register workers
 	workerManager := worker.NewWorkerManager(log)

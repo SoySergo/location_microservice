@@ -17,10 +17,10 @@ import (
 // LocationEnrichmentWorker обрабатывает события обогащения локаций
 type LocationEnrichmentWorker struct {
 	*worker.BaseWorker
-	streamRepo    repository.StreamRepository
-	enrichmentUC  usecase.LocationEnricher
-	consumerName  string
-	maxRetries    int
+	streamRepo   repository.StreamRepository
+	enrichmentUC usecase.LocationEnricher
+	consumerName string
+	maxRetries   int
 }
 
 // NewLocationEnrichmentWorker создает новый LocationEnrichmentWorker

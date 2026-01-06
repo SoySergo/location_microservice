@@ -60,11 +60,11 @@ type NearestStation struct {
 
 // LocationDoneEventExtended - расширенный результат обогащения с инфраструктурой
 type LocationDoneEventExtended struct {
-	PropertyID       uuid.UUID              `json:"property_id"`
-	EnrichedLocation *EnrichedLocation      `json:"enriched_location,omitempty"`
-	NearestTransport []NearestStation       `json:"nearest_transport,omitempty"`
-	Infrastructure   *InfrastructureResult  `json:"infrastructure,omitempty"`
-	Error            string                 `json:"error,omitempty"`
+	PropertyID       uuid.UUID             `json:"property_id"`
+	EnrichedLocation *EnrichedLocation     `json:"enriched_location,omitempty"`
+	NearestTransport []NearestStation      `json:"nearest_transport,omitempty"`
+	Infrastructure   *InfrastructureResult `json:"infrastructure,omitempty"`
+	Error            string                `json:"error,omitempty"`
 }
 
 // StreamMessage - сообщение из Redis Stream
