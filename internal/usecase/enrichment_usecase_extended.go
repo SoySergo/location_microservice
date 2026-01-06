@@ -10,19 +10,22 @@ import (
 // EnrichmentUseCaseExtended - расширенный use case для обогащения с инфраструктурой
 type EnrichmentUseCaseExtended struct {
 	*EnrichmentUseCase
-	infraUseCase *InfrastructureUseCase
-	logger       *zap.Logger
+	infraUseCase    *InfrastructureUseCase
+	transportRadius float64
+	logger          *zap.Logger
 }
 
 // NewEnrichmentUseCaseExtended создает новый EnrichmentUseCaseExtended
 func NewEnrichmentUseCaseExtended(
 	baseUseCase *EnrichmentUseCase,
 	infraUseCase *InfrastructureUseCase,
+	transportRadius float64,
 	logger *zap.Logger,
 ) *EnrichmentUseCaseExtended {
 	return &EnrichmentUseCaseExtended{
 		EnrichmentUseCase: baseUseCase,
 		infraUseCase:      infraUseCase,
+		transportRadius:   transportRadius,
 		logger:            logger,
 	}
 }

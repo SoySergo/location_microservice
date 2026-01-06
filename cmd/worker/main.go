@@ -116,6 +116,7 @@ func main() {
 		enrichmentUCExtended := usecase.NewEnrichmentUseCaseExtended(
 			enrichmentUC,
 			infraUC,
+			cfg.Worker.TransportRadius,
 			log,
 		)
 

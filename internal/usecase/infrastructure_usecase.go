@@ -83,7 +83,8 @@ func (uc *InfrastructureUseCase) GetInfrastructure(
 		pois = []*domain.POI{}
 	}
 
-	// 3. Балансируем точки для Mapbox (до 24 destinations + 1 source = 25 total)
+	// 3. Balансируем точки для Mapbox (лимит 25 координат: 1 source + до 24 destinations)
+	// Всего можем передать максимум 25 точек (origins + destinations)
 	maxMapboxDestinations := 24
 	transportCount := len(transportStations)
 	poisCount := len(pois)
