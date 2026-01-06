@@ -63,3 +63,13 @@ var (
 		http.StatusInternalServerError,
 	)
 )
+
+var (
+ErrInvalidTransportType = New(
+"INVALID_TRANSPORT_TYPE",
+"Invalid transport type",
+http.StatusBadRequest,
+)
+
+CodeInvalidInput = "INVALID_INPUT"
+)

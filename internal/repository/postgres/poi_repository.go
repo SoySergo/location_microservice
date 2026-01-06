@@ -562,3 +562,90 @@ func (r *poiRepository) GetPOIByBoundaryTile(ctx context.Context, boundaryID int
 
 	return tile, nil
 }
+
+// GetPOITileByCategories генерирует MVT тайл с POI по координатам тайла с фильтрацией по категориям и подкатегориям
+func (r *poiRepository) GetPOITileByCategories(ctx context.Context, z, x, y int, categories, subcategories []string) ([]byte, error) {
+query := `
+WITH 
+bounds AS (
+SELECT ST_TileEnvelope($1, $2, $3) AS geom
+),
+mvt_geom AS (
+SELECT 
+p.id, 
+p.name,
+COALESCE(p.name_es, p.name) as name_es,
+COALESCE(p.name_ca, p.name) as name_ca,
+p.category, 
+p.subcategory,
+p.address,
+p.phone,
+p.website,
+p.opening_hours,
+ST_AsMVTGeom(
+p.geometry,
+bounds.geom,
+$4,
+$5,
+true
+) AS geom
+FROM pois p, bounds
+WHERE p.geometry && bounds.geom
+`
+
+args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
+argIdx := 6
+
+// Фильтрация по категориям если указаны
+if len(categories) > 0 {
+query += fmt.Sprintf(" AND p.category = ANY($%d)", argIdx)
+args = append(args, pq.Array(categories))
+argIdx++
+}
+
+// Фильтрация по подкатегориям если указаны
+if len(subcategories) > 0 {
+query += fmt.Sprintf(" AND p.subcategory = ANY($%d)", argIdx)
+args = append(args, pq.Array(subcategories))
+argIdx++
+}
+
+// Адаптивная фильтрация и лимит по zoom level
+poiLimit := getPOILimitByZoom(z)
+query += fmt.Sprintf(`
+ORDER BY 
+CASE p.category 
+WHEN 'healthcare' THEN 1
+WHEN 'education' THEN 2
+WHEN 'shopping' THEN 3
+WHEN 'leisure' THEN 4
+WHEN 'food_drink' THEN 5
+ELSE 6
+END,
+p.name
+LIMIT %d
+)
+SELECT ST_AsMVT(mvt_geom.*, 'pois') AS tile
+FROM mvt_geom
+WHERE geom IS NOT NULL
+`, poiLimit)
+
+var tile []byte
+err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+if err == sql.ErrNoRows {
+return []byte{}, nil
+}
+if err != nil {
+r.logger.Error("Failed to generate POI tile by categories",
+zap.Int("z", z),
+zap.Int("x", x),
+zap.Int("y", y),
+zap.Strings("categories", categories),
+zap.Strings("subcategories", subcategories),
+zap.Error(err),
+)
+return nil, errors.ErrDatabaseError
+}
+
+return tile, nil
+}

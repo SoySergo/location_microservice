@@ -176,3 +176,48 @@ func (uc *TransportUseCase) BatchGetNearestStations(
 		Results: results,
 	}, nil
 }
+
+// GetTransportTileByTypes возвращает MVT тайл с транспортом с фильтрацией по типам
+func (uc *TransportUseCase) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
+// Валидация zoom level
+if z < 0 || z > 18 {
+return nil, errors.ErrInvalidZoom
+}
+
+// Валидация типов транспорта
+if len(types) > 0 {
+for _, t := range types {
+if !domain.IsValidTransportType(t) {
+uc.logger.Warn("Invalid transport type", zap.String("type", t))
+return nil, errors.ErrInvalidTransportType
+}
+}
+}
+
+// Получаем тайл из репозитория
+tile, err := uc.transportRepo.GetTransportTileByTypes(ctx, z, x, y, types)
+if err != nil {
+uc.logger.Error("Failed to get transport tile by types",
+zap.Int("z", z),
+zap.Int("x", x),
+zap.Int("y", y),
+zap.Strings("types", types),
+zap.Error(err))
+return nil, err
+}
+
+return tile, nil
+}
+
+// GetLinesByStationID возвращает линии для станции (для hover логики)
+func (uc *TransportUseCase) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
+lines, err := uc.transportRepo.GetLinesByStationID(ctx, stationID)
+if err != nil {
+uc.logger.Error("Failed to get lines by station ID",
+zap.Int64("station_id", stationID),
+zap.Error(err))
+return nil, err
+}
+
+return lines, nil
+}

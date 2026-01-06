@@ -592,3 +592,111 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 
 	return tile, nil
 }
+
+// GetTransportTileByTypes генерирует MVT тайл для транспорта с фильтрацией по типам
+func (r *transportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
+query := `
+WITH 
+bounds AS (
+SELECT ST_TileEnvelope($1, $2, $3) AS geom
+),
+stations_mvt AS (
+SELECT 
+s.id, s.name, s.type,
+s.line_ids,
+array_length(s.line_ids, 1) as line_count,
+ST_AsMVTGeom(ST_Transform(s.geometry, 3857), bounds.geom, $4, $5, true) AS geom
+FROM transport_stations s, bounds
+WHERE ST_Transform(s.geometry, 3857) && bounds.geom
+`
+
+args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
+argIdx := 6
+
+// Фильтрация по типам если указаны
+if len(types) > 0 {
+query += fmt.Sprintf(" AND s.type = ANY($%d)", argIdx)
+args = append(args, pq.Array(types))
+argIdx++
+}
+
+query += `
+ORDER BY s.name
+LIMIT ` + fmt.Sprintf("$%d", argIdx) + `
+)
+SELECT ST_AsMVT(stations_mvt.*, 'transport_stations') AS tile
+FROM stations_mvt
+WHERE geom IS NOT NULL
+`
+args = append(args, LimitStations)
+
+var tile []byte
+err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+if err == sql.ErrNoRows {
+return []byte{}, nil
+}
+if err != nil {
+r.logger.Error("Failed to generate transport tile by types",
+zap.Int("z", z),
+zap.Int("x", x),
+zap.Int("y", y),
+zap.Strings("types", types),
+zap.Error(err))
+return nil, errors.ErrDatabaseError
+}
+
+return tile, nil
+}
+
+// GetLinesByStationID возвращает линии для станции (для hover логики)
+func (r *transportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
+query := `
+SELECT 
+l.id, l.osm_id, l.name, l.ref, l.type, l.color, l.text_color,
+l.operator, l.network, l.from_station, l.to_station,
+l.station_ids
+FROM transport_lines l
+WHERE $1 = ANY(l.station_ids)
+ORDER BY l.name
+`
+
+rows, err := r.db.QueryContext(ctx, query, stationID)
+if err != nil {
+r.logger.Error("Failed to get lines by station ID",
+zap.Int64("station_id", stationID),
+zap.Error(err))
+return nil, errors.ErrDatabaseError
+}
+defer rows.Close()
+
+var lines []*domain.TransportLine
+for rows.Next() {
+var l domain.TransportLine
+var stationIDsRaw interface{}
+
+err := rows.Scan(
+&l.ID, &l.OSMId, &l.Name, &l.Ref, &l.Type,
+&l.Color, &l.TextColor, &l.Operator, &l.Network,
+&l.FromStation, &l.ToStation, &stationIDsRaw,
+)
+if err != nil {
+r.logger.Error("Failed to scan line", zap.Error(err))
+continue
+}
+
+l.StationIDs, err = scanInt64Array(stationIDsRaw)
+if err != nil {
+r.logger.Error("Failed to parse station_ids array", zap.Error(err))
+continue
+}
+
+lines = append(lines, &l)
+}
+
+if err = rows.Err(); err != nil {
+r.logger.Error("Error iterating line rows", zap.Error(err))
+return nil, errors.ErrDatabaseError
+}
+
+return lines, nil
+}

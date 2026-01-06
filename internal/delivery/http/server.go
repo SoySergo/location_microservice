@@ -23,6 +23,7 @@ type Server struct {
 	transportHandler *handler.TransportHandler
 	poiHandler       *handler.POIHandler
 	tileHandler      *handler.TileHandler
+	poiTileHandler   *handler.POITileHandler
 	statsHandler     *handler.StatsHandler
 }
 
@@ -34,6 +35,7 @@ func NewServer(
 	transportHandler *handler.TransportHandler,
 	poiHandler *handler.POIHandler,
 	tileHandler *handler.TileHandler,
+	poiTileHandler *handler.POITileHandler,
 	statsHandler *handler.StatsHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
@@ -52,6 +54,7 @@ func NewServer(
 		transportHandler: transportHandler,
 		poiHandler:       poiHandler,
 		tileHandler:      tileHandler,
+		poiTileHandler:   poiTileHandler,
 		statsHandler:     statsHandler,
 	}
 
@@ -98,11 +101,18 @@ func (s *Server) setupRoutes() {
 	api.Post("/batch/transport/nearest", s.transportHandler.BatchGetNearestStations)
 	api.Get("/transport/lines/:id.pbf", s.tileHandler.GetTransportLineTile)
 	api.Post("/transport/lines.pbf", s.tileHandler.GetTransportLinesTile)
+	api.Get("/transport/station/:station_id/lines", s.transportHandler.GetLinesByStationID)
 
 	// POI routes
 	api.Post("/radius/poi", s.poiHandler.SearchByRadius)
 	api.Get("/poi/categories", s.poiHandler.GetCategories)
 	api.Get("/poi/categories/:id/subcategories", s.poiHandler.GetSubcategories)
+
+	// POI Tile routes - новые эндпоинты
+	api.Get("/tiles/poi/:z/:x/:y.pbf", s.poiTileHandler.GetPOITile)
+
+	// Transport Tile routes - новые эндпоинты с фильтрацией
+	api.Get("/tiles/transport/:z/:x/:y.pbf", s.transportHandler.GetTransportTileByTypes)
 
 	// Environment tiles
 	api.Get("/green-spaces/tiles/:z/:x/:y.pbf", s.tileHandler.GetGreenSpacesTile)
