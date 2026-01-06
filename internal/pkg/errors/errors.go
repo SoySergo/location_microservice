@@ -28,17 +28,3 @@ func (e *AppError) WithDetails(details map[string]interface{}) *AppError {
 	e.Details = details
 	return e
 }
-
-var (
-// ErrInvalidZoom is returned when zoom level is invalid
-ErrInvalidZoom = &AppError{
-Code:    CodeInvalidInput,
-Message: "Invalid zoom level: must be between 0 and 18",
-}
-
-// ErrInvalidTransportType is returned when transport type is invalid
-ErrInvalidTransportType = &AppError{
-Code:    CodeInvalidInput,
-Message: "Invalid transport type",
-}
-)

@@ -520,3 +520,11 @@ func TestEnrichmentUseCase_EnrichLocation_TransportLookupFails(t *testing.T) {
 func ptrInt64(v int64) *int64 {
 	return &v
 }
+
+func (m *MockTransportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
+return nil, nil
+}
+
+func (m *MockTransportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
+return nil, nil
+}

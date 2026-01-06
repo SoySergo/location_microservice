@@ -203,6 +203,15 @@ func Load() (*Config, error) {
 	if cfg.Mapbox.BatchInterval == 0 {
 		cfg.Mapbox.BatchInterval = 1000 * time.Millisecond // 1 second
 	}
+	if cfg.Cache.POITileCacheTTL == 0 {
+		cfg.Cache.POITileCacheTTL = time.Hour // 1 hour default
+	}
+	if cfg.Cache.TransportTileCacheTTL == 0 {
+		cfg.Cache.TransportTileCacheTTL = time.Hour // 1 hour default
+	}
+	if cfg.Tile.POIMaxFeatures == 0 {
+		cfg.Tile.POIMaxFeatures = 1000 // Default max features per tile
+	}
 
 	return cfg, nil
 }
@@ -239,14 +248,5 @@ func (c *Config) GetDatabaseDSN() string {
 
 func (c *Config) GetRedisAddr() string {
 	return fmt.Sprintf("%s:%d", c.Redis.Host, c.Redis.Port)
-}
-if cfg.Cache.POITileCacheTTL == 0 {
-cfg.Cache.POITileCacheTTL = time.Hour // 1 hour default
-}
-if cfg.Cache.TransportTileCacheTTL == 0 {
-cfg.Cache.TransportTileCacheTTL = time.Hour // 1 hour default
-}
-if cfg.Tile.POIMaxFeatures == 0 {
-cfg.Tile.POIMaxFeatures = 1000 // Default max features per tile
 }
 

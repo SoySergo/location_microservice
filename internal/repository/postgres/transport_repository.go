@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/location-microservice/internal/domain"
 	"github.com/location-microservice/internal/domain/repository"
 	"github.com/location-microservice/internal/pkg/errors"

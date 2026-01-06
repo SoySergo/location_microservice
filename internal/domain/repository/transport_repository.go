@@ -42,5 +42,5 @@ type TransportRepository interface {
 	GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error)
 
 	// GetLinesByStationID возвращает линии для станции (для hover логики)
-	GetLinesByStationID(ctx context.Context, stationID int64) ([]*TransportLine, error)
+	GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error)
 }
