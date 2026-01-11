@@ -44,6 +44,11 @@ help:
 	@echo "  make test-db-reset- Reset test database (remove all data)"
 	@echo "  make test-integration - Run integration tests"
 	@echo "  make test-integration-coverage - Run integration tests with coverage"
+	@echo ""
+	@echo "Redis Streams testing commands:"
+	@echo "  make test-publish        - Test publishing event to shared Redis"
+	@echo "  make test-publish-custom - Test with custom Redis address"
+	@echo "  make check-streams       - Check Redis streams status"
 
 build:
 	go build -o bin/api cmd/api/main.go
