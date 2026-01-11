@@ -768,3 +768,150 @@ func (r *transportRepository) GetLinesByStationID(ctx context.Context, stationID
 
 	return lines, nil
 }
+
+// GetNearestStationsGrouped возвращает ближайшие станции транспорта с группировкой
+// по нормализованному имени. Это исключает дубли выходов метро (считается как одна станция).
+func (r *transportRepository) GetNearestStationsGrouped(
+	ctx context.Context,
+	lat, lon float64,
+	priorities []domain.TransportPriority,
+	maxDistance float64,
+) ([]*domain.TransportStation, error) {
+	var allStations []*domain.TransportStation
+
+	// Для каждого типа транспорта получаем станции с учетом приоритета
+	for _, priority := range priorities {
+		stations, err := r.getGroupedStationsByType(ctx, lat, lon, priority.Type, maxDistance, priority.Limit)
+		if err != nil {
+			r.logger.Warn("failed to get osm stations for type",
+				zap.String("type", priority.Type),
+				zap.Error(err))
+			continue
+		}
+		allStations = append(allStations, stations...)
+	}
+
+	return allStations, nil
+}
+
+// getGroupedStationsByType получает станции одного типа с группировкой по нормализованному имени
+func (r *transportRepository) getGroupedStationsByType(
+	ctx context.Context,
+	lat, lon float64,
+	transportType string,
+	maxDistance float64,
+	limit int,
+) ([]*domain.TransportStation, error) {
+	// Определяем условие фильтрации по типу транспорта
+	typeFilter := buildTransportTypeFilter(transportType)
+
+	// SQL запрос с группировкой по нормализованному имени
+	// Удаляет дубли выходов метро (например, разные выходы одной станции)
+	query := fmt.Sprintf(`
+		SELECT DISTINCT ON (normalized_name) 
+			osm_id, name, name_en, type, lat, lon
+		FROM (
+			SELECT 
+				osm_id,
+				COALESCE(name, '') AS name,
+				COALESCE(NULLIF(tags->'name:en', ''), name, '') AS name_en,
+				COALESCE(NULLIF(public_transport, ''), NULLIF(railway, ''), 'station') AS type,
+				ST_Y(ST_Transform(way, %d)) AS lat,
+				ST_X(ST_Transform(way, %d)) AS lon,
+				ST_Distance(ST_Transform(way, %d)::geography, ST_SetSRID(ST_MakePoint($1, $2), %d)::geography) AS distance,
+				LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-zA-Zа-яА-Я0-9]', '', 'g')) AS normalized_name
+			FROM %s
+			WHERE %s
+			  AND name IS NOT NULL AND name != ''
+			  AND ST_DWithin(ST_Transform(way, %d)::geography, ST_SetSRID(ST_MakePoint($1, $2), %d)::geography, $3)
+			ORDER BY distance
+		) sub
+		WHERE normalized_name != ''
+		ORDER BY normalized_name, distance
+		LIMIT $4
+	`, SRID4326, SRID4326, SRID4326, SRID4326, planetPointTable, typeFilter, SRID4326, SRID4326)
+
+	rows, err := r.db.QueryxContext(ctx, query, lon, lat, maxDistance, limit)
+	if err != nil {
+		r.logger.Error("failed to execute osm grouped stations query",
+			zap.String("type", transportType),
+			zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var stations []*domain.TransportStation
+	for rows.Next() {
+		var s domain.TransportStation
+
+		err := rows.Scan(
+			&s.OSMId, &s.Name, &s.NameEn, &s.Type,
+			&s.Lat, &s.Lon,
+		)
+		if err != nil {
+			r.logger.Error("failed to scan osm station", zap.Error(err))
+			continue
+		}
+
+		// В OSM данных ID = OSM ID
+		s.ID = s.OSMId
+		// LineIDs в OSM не связаны напрямую, оставляем пустым
+		s.LineIDs = []int64{}
+		s.Tags = make(map[string]string)
+
+		stations = append(stations, &s)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("error iterating osm stations", zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+
+	return stations, nil
+}
+
+// buildTransportTypeFilter строит SQL условие фильтрации по типу транспорта
+func buildTransportTypeFilter(transportType string) string {
+	switch transportType {
+	case "metro", "subway":
+		// Метро: station=subway или public_transport=station + subway
+		return `(
+			railway = 'station' AND (tags->'station' = 'subway' OR tags->'subway' = 'yes')
+			OR public_transport = 'station' AND (tags->'subway' = 'yes' OR tags->'station' = 'subway')
+			OR railway = 'subway_entrance'
+		)`
+	case "train", "rail":
+		// Железнодорожные станции
+		return `(
+			railway IN ('station', 'halt') 
+			AND (tags->'station' IS NULL OR tags->'station' NOT IN ('subway', 'light_rail'))
+			AND (tags->'subway' IS NULL OR tags->'subway' != 'yes')
+		)`
+	case "tram", "light_rail":
+		// Трамвай / легкое метро
+		return `(
+			railway = 'tram_stop'
+			OR (railway = 'station' AND tags->'station' = 'light_rail')
+			OR public_transport = 'stop_position' AND tags->'tram' = 'yes'
+		)`
+	case "bus":
+		// Автобусные остановки
+		return `(
+			highway = 'bus_stop'
+			OR public_transport = 'platform' AND tags->'bus' = 'yes'
+			OR public_transport = 'stop_position' AND tags->'bus' = 'yes'
+		)`
+	case "ferry":
+		// Паромные терминалы
+		return `(
+			amenity = 'ferry_terminal'
+			OR public_transport = 'station' AND tags->'ferry' = 'yes'
+		)`
+	default:
+		// Общий фильтр для всех станций
+		return `(
+			public_transport IS NOT NULL 
+			OR railway IN ('station', 'halt', 'stop', 'tram_stop', 'subway_entrance')
+		)`
+	}
+}

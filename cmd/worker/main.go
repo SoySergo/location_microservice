@@ -6,12 +6,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/location-microservice/internal/config"
 	"github.com/location-microservice/internal/infrastructure/mapbox"
 	"github.com/location-microservice/internal/pkg/logger"
 	"github.com/location-microservice/internal/repository/cache"
-	"github.com/location-microservice/internal/repository/postgres"
+	"github.com/location-microservice/internal/repository/postgresosm"
 	redisRepo "github.com/location-microservice/internal/repository/redis"
 	"github.com/location-microservice/internal/usecase"
 	"github.com/location-microservice/internal/worker"
@@ -47,16 +48,24 @@ func main() {
 		zap.Strings("transport_types", cfg.Worker.TransportTypes),
 		zap.Bool("infrastructure_enabled", cfg.Worker.InfrastructureEnabled))
 
-	// 3. Connect to PostgreSQL
-	db, err := postgres.New(&cfg.Database, log)
+	// 3. Connect to OSM PostgreSQL (planet_osm_* tables)
+	osmDB, err := postgresosm.New(&cfg.OSMDB, log)
 	if err != nil {
-		log.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
+		log.Fatal("Failed to connect to OSM PostgreSQL", zap.Error(err))
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Error("Failed to close PostgreSQL connection", zap.Error(err))
+		if err := osmDB.Close(); err != nil {
+			log.Error("Failed to close OSM PostgreSQL connection", zap.Error(err))
 		}
 	}()
+
+	// Health check for OSM database
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := osmDB.Health(healthCtx); err != nil {
+		log.Fatal("OSM PostgreSQL health check failed", zap.Error(err))
+	}
+	healthCancel()
+	log.Info("OSM PostgreSQL connected and healthy")
 
 	// 4. Connect to Redis
 	redisClient, err := cache.NewRedis(&cfg.Redis, log)
@@ -69,9 +78,9 @@ func main() {
 		}
 	}()
 
-	// 5. Initialize repositories
-	boundaryRepo := postgres.NewBoundaryRepository(db)
-	transportRepo := postgres.NewTransportRepository(db)
+	// 5. Initialize repositories (using OSM database)
+	boundaryRepo := postgresosm.NewBoundaryRepository(osmDB)
+	transportRepo := postgresosm.NewTransportRepository(osmDB)
 	streamRepo := redisRepo.NewStreamRepository(redisClient.Client(), log)
 
 	// 6. Initialize use cases
@@ -94,9 +103,6 @@ func main() {
 			zap.Int("batch_size", cfg.Mapbox.BatchSize),
 			zap.Duration("batch_interval", cfg.Mapbox.BatchInterval))
 
-		// Initialize infrastructure repository
-		infraRepo := postgres.NewInfrastructureRepository(db)
-
 		// Initialize Mapbox client
 		mapboxClient := mapbox.NewMapboxClient(&cfg.Mapbox, log)
 
@@ -108,9 +114,9 @@ func main() {
 			cfg.Mapbox.BatchInterval,
 		)
 
-		// Initialize infrastructure use case
+		// Initialize infrastructure use case (uses TransportRepository directly)
 		infraUC := usecase.NewInfrastructureUseCase(
-			infraRepo,
+			transportRepo,
 			batchScheduler,
 			log,
 			cfg.Worker.MaxMetro,

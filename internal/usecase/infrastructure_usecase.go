@@ -13,7 +13,7 @@ import (
 
 // InfrastructureUseCase - use case для работы с инфраструктурой
 type InfrastructureUseCase struct {
-	infraRepo      repository.InfrastructureRepository
+	transportRepo  repository.TransportRepository
 	batchScheduler *MapboxBatchScheduler
 	logger         *zap.Logger
 	maxMetro       int
@@ -22,13 +22,13 @@ type InfrastructureUseCase struct {
 
 // NewInfrastructureUseCase создает новый InfrastructureUseCase
 func NewInfrastructureUseCase(
-	infraRepo repository.InfrastructureRepository,
+	transportRepo repository.TransportRepository,
 	batchScheduler *MapboxBatchScheduler,
 	logger *zap.Logger,
 	maxMetro, maxTrain int,
 ) *InfrastructureUseCase {
 	return &InfrastructureUseCase{
-		infraRepo:      infraRepo,
+		transportRepo:  transportRepo,
 		batchScheduler: batchScheduler,
 		logger:         logger,
 		maxMetro:       maxMetro,
@@ -49,7 +49,7 @@ func (uc *InfrastructureUseCase) GetInfrastructure(
 		{Type: "train", Limit: uc.maxTrain},
 	}
 
-	transportStations, err := uc.infraRepo.GetNearestTransportGrouped(
+	transportStations, err := uc.transportRepo.GetNearestStationsGrouped(
 		ctx, lat, lon, transportPriorities, transportRadius,
 	)
 	if err != nil {

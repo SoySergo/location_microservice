@@ -596,7 +596,7 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 
 // GetTransportTileByTypes генерирует MVT тайл для транспорта с фильтрацией по типам
 func (r *transportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
-query := `
+	query := `
 WITH 
 bounds AS (
 SELECT ST_TileEnvelope($1, $2, $3) AS geom
@@ -611,17 +611,17 @@ FROM transport_stations s, bounds
 WHERE ST_Transform(s.geometry, 3857) && bounds.geom
 `
 
-args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
-argIdx := 6
+	args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
+	argIdx := 6
 
-// Фильтрация по типам если указаны
-if len(types) > 0 {
-query += fmt.Sprintf(" AND s.type = ANY($%d)", argIdx)
-args = append(args, pq.Array(types))
-argIdx++
-}
+	// Фильтрация по типам если указаны
+	if len(types) > 0 {
+		query += fmt.Sprintf(" AND s.type = ANY($%d)", argIdx)
+		args = append(args, pq.Array(types))
+		argIdx++
+	}
 
-query += `
+	query += `
 ORDER BY s.name
 LIMIT ` + fmt.Sprintf("$%d", argIdx) + `
 )
@@ -629,29 +629,29 @@ SELECT ST_AsMVT(stations_mvt.*, 'transport_stations') AS tile
 FROM stations_mvt
 WHERE geom IS NOT NULL
 `
-args = append(args, LimitStations)
+	args = append(args, LimitStations)
 
-var tile []byte
-err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
-if err == sql.ErrNoRows {
-return []byte{}, nil
-}
-if err != nil {
-r.logger.Error("Failed to generate transport tile by types",
-zap.Int("z", z),
-zap.Int("x", x),
-zap.Int("y", y),
-zap.Strings("types", types),
-zap.Error(err))
-return nil, errors.ErrDatabaseError
-}
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to generate transport tile by types",
+			zap.Int("z", z),
+			zap.Int("x", x),
+			zap.Int("y", y),
+			zap.Strings("types", types),
+			zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
 
-return tile, nil
+	return tile, nil
 }
 
 // GetLinesByStationID возвращает линии для станции (для hover логики)
 func (r *transportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
-query := `
+	query := `
 SELECT 
 l.id, l.osm_id, l.name, l.ref, l.type, l.color, l.text_color,
 l.operator, l.network, l.from_station, l.to_station,
@@ -661,43 +661,135 @@ WHERE $1 = ANY(l.station_ids)
 ORDER BY l.name
 `
 
-rows, err := r.db.QueryContext(ctx, query, stationID)
-if err != nil {
-r.logger.Error("Failed to get lines by station ID",
-zap.Int64("station_id", stationID),
-zap.Error(err))
-return nil, errors.ErrDatabaseError
+	rows, err := r.db.QueryContext(ctx, query, stationID)
+	if err != nil {
+		r.logger.Error("Failed to get lines by station ID",
+			zap.Int64("station_id", stationID),
+			zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var lines []*domain.TransportLine
+	for rows.Next() {
+		var l domain.TransportLine
+		var stationIDsRaw interface{}
+
+		err := rows.Scan(
+			&l.ID, &l.OSMId, &l.Name, &l.Ref, &l.Type,
+			&l.Color, &l.TextColor, &l.Operator, &l.Network,
+			&l.FromStation, &l.ToStation, &stationIDsRaw,
+		)
+		if err != nil {
+			r.logger.Error("Failed to scan line", zap.Error(err))
+			continue
+		}
+
+		l.StationIDs, err = scanInt64Array(stationIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse station_ids array", zap.Error(err))
+			continue
+		}
+
+		lines = append(lines, &l)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("Error iterating line rows", zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	return lines, nil
 }
-defer rows.Close()
 
-var lines []*domain.TransportLine
-for rows.Next() {
-var l domain.TransportLine
-var stationIDsRaw interface{}
+// GetNearestStationsGrouped возвращает ближайшие станции транспорта с группировкой
+// по нормализованному имени. Это исключает дубли выходов метро.
+func (r *transportRepository) GetNearestStationsGrouped(
+	ctx context.Context,
+	lat, lon float64,
+	priorities []domain.TransportPriority,
+	maxDistance float64,
+) ([]*domain.TransportStation, error) {
+	var allStations []*domain.TransportStation
 
-err := rows.Scan(
-&l.ID, &l.OSMId, &l.Name, &l.Ref, &l.Type,
-&l.Color, &l.TextColor, &l.Operator, &l.Network,
-&l.FromStation, &l.ToStation, &stationIDsRaw,
-)
-if err != nil {
-r.logger.Error("Failed to scan line", zap.Error(err))
-continue
+	// Для каждого типа транспорта получаем станции с учетом приоритета
+	for _, priority := range priorities {
+		stations, err := r.getGroupedStationsByType(ctx, lat, lon, priority.Type, maxDistance, priority.Limit)
+		if err != nil {
+			r.logger.Warn("Failed to get stations for type",
+				zap.String("type", priority.Type),
+				zap.Error(err))
+			continue
+		}
+		allStations = append(allStations, stations...)
+	}
+
+	return allStations, nil
 }
 
-l.StationIDs, err = scanInt64Array(stationIDsRaw)
-if err != nil {
-r.logger.Error("Failed to parse station_ids array", zap.Error(err))
-continue
-}
+// getGroupedStationsByType получает станции одного типа с группировкой по нормализованному имени
+func (r *transportRepository) getGroupedStationsByType(
+	ctx context.Context,
+	lat, lon float64,
+	transportType string,
+	maxDistance float64,
+	limit int,
+) ([]*domain.TransportStation, error) {
+	// SQL запрос с группировкой по нормализованному имени
+	// Удаляет дубли выходов метро (например, разные выходы одной станции)
+	query := `
+		SELECT DISTINCT ON (normalized_name) 
+			id, osm_id, name, name_en, type, lat, lon, line_ids
+		FROM (
+			SELECT 
+				s.id, s.osm_id, s.name, s.name_en, s.type, s.lat, s.lon, s.line_ids,
+				ST_Distance(s.geometry::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS distance,
+				LOWER(REGEXP_REPLACE(s.name, '[^a-zA-Zа-яА-Я0-9]', '', 'g')) AS normalized_name
+			FROM transport_stations s
+			WHERE s.type = $3
+			  AND ST_DWithin(s.geometry::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $4)
+			ORDER BY distance
+		) sub
+		ORDER BY normalized_name, distance
+		LIMIT $5
+	`
 
-lines = append(lines, &l)
-}
+	rows, err := r.db.QueryContext(ctx, query, lon, lat, transportType, maxDistance, limit)
+	if err != nil {
+		r.logger.Error("Failed to execute grouped stations query",
+			zap.String("type", transportType),
+			zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+	defer rows.Close()
 
-if err = rows.Err(); err != nil {
-r.logger.Error("Error iterating line rows", zap.Error(err))
-return nil, errors.ErrDatabaseError
-}
+	var stations []*domain.TransportStation
+	for rows.Next() {
+		var s domain.TransportStation
+		var lineIDsRaw interface{}
 
-return lines, nil
+		err := rows.Scan(
+			&s.ID, &s.OSMId, &s.Name, &s.NameEn, &s.Type,
+			&s.Lat, &s.Lon, &lineIDsRaw,
+		)
+		if err != nil {
+			r.logger.Error("Failed to scan station", zap.Error(err))
+			continue
+		}
+
+		s.LineIDs, err = scanInt64Array(lineIDsRaw)
+		if err != nil {
+			r.logger.Error("Failed to parse line_ids array", zap.Error(err))
+			continue
+		}
+
+		stations = append(stations, &s)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("Error iterating stations", zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+
+	return stations, nil
 }

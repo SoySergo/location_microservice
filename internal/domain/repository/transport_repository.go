@@ -11,6 +11,10 @@ type TransportRepository interface {
 	// GetNearestStations возвращает ближайшие станции
 	GetNearestStations(ctx context.Context, lat, lon float64, types []string, maxDistance float64, limit int) ([]*domain.TransportStation, error)
 
+	// GetNearestStationsGrouped возвращает ближайшие станции транспорта с группировкой
+	// по нормализованному имени. Это исключает дубли выходов метро (считается как одна станция).
+	GetNearestStationsGrouped(ctx context.Context, lat, lon float64, priorities []domain.TransportPriority, maxDistance float64) ([]*domain.TransportStation, error)
+
 	// GetLineByID возвращает линию по ID
 	GetLineByID(ctx context.Context, id int64) (*domain.TransportLine, error)
 

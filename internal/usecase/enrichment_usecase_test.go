@@ -174,6 +174,27 @@ func (m *MockTransportRepository) GetTransportRadiusTile(ctx context.Context, la
 	return args.Get(0).([]byte), args.Error(1)
 }
 
+func (m *MockTransportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
+	args := m.Called(ctx, z, x, y, types)
+	return args.Get(0).([]byte), args.Error(1)
+}
+
+func (m *MockTransportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
+	args := m.Called(ctx, stationID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.TransportLine), args.Error(1)
+}
+
+func (m *MockTransportRepository) GetNearestStationsGrouped(ctx context.Context, lat, lon float64, priorities []domain.TransportPriority, maxDistance float64) ([]*domain.TransportStation, error) {
+	args := m.Called(ctx, lat, lon, priorities, maxDistance)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.TransportStation), args.Error(1)
+}
+
 // Test EnrichLocation with city name
 func TestEnrichmentUseCase_EnrichLocation_WithCityName(t *testing.T) {
 	// Arrange
@@ -527,12 +548,4 @@ func TestEnrichmentUseCase_EnrichLocation_TransportLookupFails(t *testing.T) {
 // Helper function
 func ptrInt64(v int64) *int64 {
 	return &v
-}
-
-func (m *MockTransportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
-	return nil, nil
-}
-
-func (m *MockTransportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
-	return nil, nil
 }
