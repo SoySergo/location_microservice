@@ -67,23 +67,34 @@ func main() {
 	healthCancel()
 	log.Info("OSM PostgreSQL connected and healthy")
 
-	// 4. Connect to Redis
-	redisClient, err := cache.NewRedis(&cfg.Redis, log)
+	// 4. Connect to Redis (cache - local)
+	cacheRedis, err := cache.NewRedis(&cfg.Redis, log)
 	if err != nil {
-		log.Fatal("Failed to connect to Redis", zap.Error(err))
+		log.Fatal("Failed to connect to cache Redis", zap.Error(err))
 	}
 	defer func() {
-		if err := redisClient.Close(); err != nil {
-			log.Error("Failed to close Redis connection", zap.Error(err))
+		if err := cacheRedis.Close(); err != nil {
+			log.Error("Failed to close cache Redis connection", zap.Error(err))
 		}
 	}()
 
-	// 5. Initialize repositories (using OSM database)
+	// 5. Connect to Redis Streams (shared with backend_estate)
+	streamsRedis, err := cache.NewRedisStreams(&cfg.RedisStreams, log)
+	if err != nil {
+		log.Fatal("Failed to connect to streams Redis", zap.Error(err))
+	}
+	defer func() {
+		if err := streamsRedis.Close(); err != nil {
+			log.Error("Failed to close streams Redis connection", zap.Error(err))
+		}
+	}()
+
+	// 6. Initialize repositories (using OSM database)
 	boundaryRepo := postgresosm.NewBoundaryRepository(osmDB)
 	transportRepo := postgresosm.NewTransportRepository(osmDB)
-	streamRepo := redisRepo.NewStreamRepository(redisClient.Client(), log)
+	streamRepo := redisRepo.NewStreamRepository(streamsRedis, log)
 
-	// 6. Initialize use cases
+	// 7. Initialize use cases
 	enrichmentUC := usecase.NewEnrichmentUseCase(
 		boundaryRepo,
 		transportRepo,
@@ -92,7 +103,7 @@ func main() {
 		cfg.Worker.TransportRadius,
 	)
 
-	// 7. Initialize worker (basic or extended based on configuration)
+	// 8. Initialize worker (basic or extended based on configuration)
 	var locationWorker worker.Worker
 	var batchScheduler *usecase.MapboxBatchScheduler
 
@@ -151,11 +162,11 @@ func main() {
 		)
 	}
 
-	// 8. Create worker manager and register workers
+	// 9. Create worker manager and register workers
 	workerManager := worker.NewWorkerManager(log)
 	workerManager.Register(locationWorker)
 
-	// 9. Setup graceful shutdown
+	// 10. Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

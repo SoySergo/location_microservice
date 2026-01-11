@@ -9,15 +9,16 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	OSMDB    DatabaseConfig
-	Redis    RedisConfig
-	Cache    CacheConfig
-	Tile     TileConfig
-	Log      LogConfig
-	Worker   WorkerConfig
-	Mapbox   MapboxConfig
+	Server       ServerConfig
+	Database     DatabaseConfig
+	OSMDB        DatabaseConfig
+	Redis        RedisConfig
+	RedisStreams RedisStreamsConfig
+	Cache        CacheConfig
+	Tile         TileConfig
+	Log          LogConfig
+	Worker       WorkerConfig
+	Mapbox       MapboxConfig
 }
 
 type ServerConfig struct {
@@ -40,6 +41,13 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
+	Host     string
+	Port     int
+	Password string
+	DB       int
+}
+
+type RedisStreamsConfig struct {
 	Host     string
 	Port     int
 	Password string
@@ -129,6 +137,12 @@ func Load() (*Config, error) {
 			Port:     viper.GetInt("REDIS_PORT"),
 			Password: viper.GetString("REDIS_PASSWORD"),
 			DB:       viper.GetInt("REDIS_DB"),
+		},
+		RedisStreams: RedisStreamsConfig{
+			Host:     viper.GetString("REDIS_STREAMS_HOST"),
+			Port:     viper.GetInt("REDIS_STREAMS_PORT"),
+			Password: viper.GetString("REDIS_STREAMS_PASSWORD"),
+			DB:       viper.GetInt("REDIS_STREAMS_DB"),
 		},
 		Cache: CacheConfig{
 			TilesCacheTTL:         time.Duration(viper.GetInt("TILES_CACHE_TTL")) * time.Second,
