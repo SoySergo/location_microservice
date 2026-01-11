@@ -44,12 +44,12 @@ func main() {
 
 	ctx := context.Background()
 
-	// Проверка подключения
+	// Check connection
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	// Тестовое событие (Barcelona address)
+	// Test event (Barcelona address)
 	event := LocationEnrichEvent{
 		PropertyID:   uuid.New(),
 		Country:      "España",
@@ -67,7 +67,7 @@ func main() {
 		log.Fatalf("Failed to marshal event: %v", err)
 	}
 
-	// Публикация в стрим
+	// Publish to stream
 	result, err := client.XAdd(ctx, &redis.XAddArgs{
 		Stream: "stream:location:enrich",
 		Values: map[string]interface{}{
@@ -85,13 +85,16 @@ func main() {
 	fmt.Printf("   Location: %s, %s\n", *event.City, event.Country)
 	fmt.Printf("   Coordinates: %.6f, %.6f\n", *event.Latitude, *event.Longitude)
 
-	// Ожидание ответа
+	// Wait for response
 	fmt.Printf("\n⏳ Waiting for response in stream:location:done...\n")
 
-	// Создаем consumer group если не существует
-	client.XGroupCreateMkStream(ctx, "stream:location:done", "test-consumer", "$")
+	// Create consumer group if it doesn't exist
+	err = client.XGroupCreateMkStream(ctx, "stream:location:done", "test-consumer", "$").Err()
+	if err != nil && !isGroupExistsError(err) {
+		log.Printf("Warning: Failed to create consumer group: %v", err)
+	}
 
-	// Читаем ответ
+	// Read response
 	timeout := time.After(30 * time.Second)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -108,7 +111,12 @@ func main() {
 				Block:   0,
 			}).Result()
 			
-			if err != nil && err != redis.Nil {
+			if err != nil {
+				if err == redis.Nil {
+					// No messages available, continue waiting
+					continue
+				}
+				log.Printf("Warning: Failed to read from stream: %v", err)
 				continue
 			}
 
@@ -136,4 +144,9 @@ func main() {
 			}
 		}
 	}
+}
+
+func isGroupExistsError(err error) bool {
+	return err != nil && (err.Error() == "BUSYGROUP Consumer Group name already exists" || 
+		err.Error() == "BUSYGROUP Consumer Group name already exists.")
 }
