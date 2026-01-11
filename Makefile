@@ -209,7 +209,7 @@ test-publish-custom:
 
 check-streams:
 	@echo "=== stream:location:enrich ==="
-	@redis-cli -p 6380 XINFO STREAM stream:location:enrich 2>/dev/null || echo "Stream does not exist"
+	@docker exec shared_redis redis-cli XINFO STREAM stream:location:enrich 2>/dev/null || echo "Stream does not exist"
 	@echo ""
 	@echo "=== stream:location:done ==="
-	@redis-cli -p 6380 XINFO STREAM stream:location:done 2>/dev/null || echo "Stream does not exist"
+	@docker exec shared_redis redis-cli XINFO STREAM stream:location:done 2>/dev/null || echo "Stream does not exist"
