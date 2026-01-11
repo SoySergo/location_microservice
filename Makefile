@@ -176,7 +176,14 @@ run-boundary-importer:
 # Swagger commands
 swagger:
 	@echo "Generating Swagger documentation..."
-	~/go/bin/swag init -g cmd/api/main.go -o docs/swagger --parseDependency --parseInternal
+	@if [ -f ~/go/bin/swag ]; then \
+		~/go/bin/swag init -g cmd/api/main.go -o docs/swagger --parseDependency --parseInternal; \
+	elif command -v swag >/dev/null 2>&1; then \
+		swag init -g cmd/api/main.go -o docs/swagger --parseDependency --parseInternal; \
+	else \
+		echo "Error: swag is not installed. Install it with: go install github.com/swaggo/swag/cmd/swag@latest"; \
+		exit 1; \
+	fi
 	@echo "Swagger documentation generated in docs/swagger/"
 
 swagger-serve:
