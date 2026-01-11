@@ -1,5 +1,26 @@
 package main
 
+// @title Location Microservice API
+// @version 1.0.0
+// @description Микросервис для работы с геопространственными данными из OpenStreetMap. Предоставляет API для поиска административных границ, транспортной инфраструктуры, точек интереса (POI), а также векторных тайлов для визуализации на картах.
+// @description
+// @description Основные возможности:
+// @description - Поиск и обратное геокодирование административных границ
+// @description - Поиск ближайших транспортных станций (метро, автобусы, трамваи)
+// @description - Поиск точек интереса по категориям в радиусе
+// @description - Получение векторных тайлов (MVT/PBF) для всех типов данных
+// @description - Статистика по загруженным данным
+
+// @contact.name API Support
+// @contact.email support@location-microservice.com
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+// @BasePath /
+// @schemes http https
+
 import (
 	"context"
 	"fmt"
@@ -8,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/location-microservice/docs/swagger"
 	"github.com/location-microservice/internal/config"
 	httpDelivery "github.com/location-microservice/internal/delivery/http"
 	"github.com/location-microservice/internal/delivery/http/handler"

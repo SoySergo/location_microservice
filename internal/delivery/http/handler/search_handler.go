@@ -23,7 +23,19 @@ func NewSearchHandler(searchUC *usecase.SearchUseCase, logger *zap.Logger) *Sear
 	}
 }
 
-// Search - поиск по текстовому запросу
+// Search godoc
+// @Summary Поиск административных границ по тексту
+// @Description Выполняет полнотекстовый поиск по административным границам (страны, регионы, города, районы). Поддерживает поиск на разных языках и фильтрацию по административным уровням.
+// @Tags Search
+// @Accept json
+// @Produce json
+// @Param q query string true "Поисковый запрос (минимум 2 символа)"
+// @Param language query string false "Язык результатов (en, es, ca, ru, uk, fr, pt, it, de)" default(en)
+// @Param limit query int false "Максимальное количество результатов" default(10)
+// @Success 200 {object} utils.SuccessResponse{data=dto.SearchResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/search [get]
 func (h *SearchHandler) Search(c *fiber.Ctx) error {
 	var req dto.SearchRequest
 	req.Query = c.Query("q")
@@ -46,7 +58,17 @@ func (h *SearchHandler) Search(c *fiber.Ctx) error {
 	})
 }
 
-// ReverseGeocode - обратное геокодирование
+// ReverseGeocode godoc
+// @Summary Обратное геокодирование
+// @Description Определяет административный адрес (страна, регион, провинция, город, район) по географическим координатам
+// @Tags Search
+// @Accept json
+// @Produce json
+// @Param request body dto.ReverseGeocodeRequest true "Координаты точки"
+// @Success 200 {object} utils.SuccessResponse{data=dto.ReverseGeocodeResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/reverse-geocode [post]
 func (h *SearchHandler) ReverseGeocode(c *fiber.Ctx) error {
 	var req dto.ReverseGeocodeRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -65,7 +87,17 @@ func (h *SearchHandler) ReverseGeocode(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, result, nil)
 }
 
-// BatchReverseGeocode - пакетное обратное геокодирование
+// BatchReverseGeocode godoc
+// @Summary Пакетное обратное геокодирование
+// @Description Определяет административные адреса для нескольких точек за один запрос (до 100 точек)
+// @Tags Search
+// @Accept json
+// @Produce json
+// @Param request body dto.BatchReverseGeocodeRequest true "Массив координат точек"
+// @Success 200 {object} utils.SuccessResponse{data=dto.BatchReverseGeocodeResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/batch/reverse-geocode [post]
 func (h *SearchHandler) BatchReverseGeocode(c *fiber.Ctx) error {
 	var req dto.BatchReverseGeocodeRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -84,7 +116,18 @@ func (h *SearchHandler) BatchReverseGeocode(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, result, nil)
 }
 
-// GetBoundaryByID - получение границы по ID
+// GetBoundaryByID godoc
+// @Summary Получение границы по ID
+// @Description Возвращает подробную информацию об административной границе по её идентификатору
+// @Tags Search
+// @Accept json
+// @Produce json
+// @Param id path string true "ID административной границы"
+// @Success 200 {object} map[string]interface{} "Информация о границе"
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 404 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/boundaries/{id} [get]
 func (h *SearchHandler) GetBoundaryByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {

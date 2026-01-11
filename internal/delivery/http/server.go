@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
+	fiberSwagger "github.com/swaggo/fiber-swagger"
 	"github.com/location-microservice/internal/config"
 	"github.com/location-microservice/internal/delivery/http/handler"
 	"github.com/location-microservice/internal/delivery/http/middleware"
@@ -76,6 +77,9 @@ func (s *Server) setupMiddlewares() {
 
 // setupRoutes - настройка маршрутов
 func (s *Server) setupRoutes() {
+	// Swagger documentation route
+	s.app.Get("/swagger/*", fiberSwagger.WrapHandler)
+
 	api := s.app.Group("/api/v1")
 
 	// Health check

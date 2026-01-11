@@ -25,7 +25,18 @@ func NewTileHandler(tileUC *usecase.TileUseCase, logger *zap.Logger) *TileHandle
 	}
 }
 
-// GetBoundaryTile - получение тайла с границами
+// GetBoundaryTile godoc
+// @Summary Получение векторного тайла с административными границами
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с административными границами (страны, регионы, провинции, города, районы)
+// @Tags Tiles
+// @Accept json
+// @Produce application/x-protobuf
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/boundaries/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetBoundaryTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -60,7 +71,18 @@ func (h *TileHandler) GetBoundaryTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetTransportTile - получение тайла с транспортом
+// GetTransportTile godoc
+// @Summary Получение векторного тайла с транспортом
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) со всеми транспортными станциями и линиями без фильтрации
+// @Tags Tiles
+// @Accept json
+// @Produce application/x-protobuf
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/transport/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetTransportTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -75,7 +97,18 @@ func (h *TileHandler) GetTransportTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetGreenSpacesTile - получение тайла с зелеными зонами
+// GetGreenSpacesTile godoc
+// @Summary Получение векторного тайла с зелеными зонами
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с парками, садами и другими зелеными пространствами
+// @Tags Tiles
+// @Accept json
+// @Produce application/x-protobuf
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/green-spaces/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetGreenSpacesTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -90,7 +123,18 @@ func (h *TileHandler) GetGreenSpacesTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetWaterTile - получение тайла с водными объектами
+// GetWaterTile godoc
+// @Summary Получение векторного тайла с водными объектами
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с реками, озерами, морями и другими водными объектами
+// @Tags Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/water/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetWaterTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -108,7 +152,19 @@ func (h *TileHandler) GetWaterTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetBeachesTile - получение тайла с пляжами
+// GetBeachesTile godoc
+// @Summary Получение векторного тайла с пляжами
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с пляжами. Минимальный уровень зума: 12.
+// @Tags Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param z path int true "Zoom level (min: 12, max: 22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} map[string]string "Minimum zoom level is 12"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/beaches/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetBeachesTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -131,7 +187,18 @@ func (h *TileHandler) GetBeachesTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetNoiseSourcesTile - получение тайла с источниками шума
+// GetNoiseSourcesTile godoc
+// @Summary Получение векторного тайла с источниками шума
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с источниками шума (дороги, железные дороги, аэропорты)
+// @Tags Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/noise-sources/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetNoiseSourcesTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -149,7 +216,19 @@ func (h *TileHandler) GetNoiseSourcesTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetTouristZonesTile - получение тайла с туристическими зонами
+// GetTouristZonesTile godoc
+// @Summary Получение векторного тайла с туристическими зонами
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с туристическими зонами и достопримечательностями. Минимальный уровень зума: 11.
+// @Tags Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param z path int true "Zoom level (min: 11, max: 22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} map[string]string "Minimum zoom level is 11"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/tourist-zones/tiles/{z}/{x}/{y}.pbf [get]
 func (h *TileHandler) GetTouristZonesTile(c *fiber.Ctx) error {
 	z, _ := strconv.Atoi(c.Params("z"))
 	x, _ := strconv.Atoi(c.Params("x"))
@@ -172,7 +251,17 @@ func (h *TileHandler) GetTouristZonesTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetTransportLineTile - получение тайла для одной транспортной линии
+// GetTransportLineTile godoc
+// @Summary Получение векторного тайла для одной транспортной линии
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с геометрией и станциями указанной транспортной линии
+// @Tags Transport Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param id path int true "ID транспортной линии"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} map[string]string "Invalid line ID"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/transport/lines/{id}.pbf [get]
 func (h *TileHandler) GetTransportLineTile(c *fiber.Ctx) error {
 	// Parse string ID from path parameter
 	lineIDStr := c.Params("id")
@@ -193,7 +282,17 @@ func (h *TileHandler) GetTransportLineTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetTransportLinesTile - получение тайла для нескольких транспортных линий
+// GetTransportLinesTile godoc
+// @Summary Получение векторного тайла для нескольких транспортных линий
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с геометрией и станциями нескольких транспортных линий (до 50 линий за запрос)
+// @Tags Transport Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param request body dto.TransportLinesRequest true "Массив ID линий"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} map[string]string "Invalid request or too many IDs"
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/transport/lines.pbf [post]
 func (h *TileHandler) GetTransportLinesTile(c *fiber.Ctx) error {
 	var req struct {
 		IDs []string `json:"ids"` // Accept string IDs from frontend
@@ -233,7 +332,17 @@ func (h *TileHandler) GetTransportLinesTile(c *fiber.Ctx) error {
 	return c.Send(tile)
 }
 
-// GetRadiusTiles - получение тайла со всеми данными в радиусе от точки
+// GetRadiusTiles godoc
+// @Summary Получение всех данных в радиусе в формате векторного тайла
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) со всеми типами данных в указанном радиусе от точки: границы, транспорт, POI, зеленые зоны, воду и т.д. Можно фильтровать слои через параметр layers.
+// @Tags Tiles
+// @Accept json
+// @Produce application/vnd.mapbox-vector-tile
+// @Param request body dto.RadiusTilesRequest true "Координаты центра, радиус и опциональный список слоев"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {string} string "Failed to generate tile"
+// @Router /api/v1/radius/tiles.pbf [post]
 func (h *TileHandler) GetRadiusTiles(c *fiber.Ctx) error {
 	var req dto.RadiusTilesRequest
 

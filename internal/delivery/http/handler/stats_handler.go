@@ -27,7 +27,7 @@ func NewStatsHandler(statsUC *usecase.StatsUseCase, logger *zap.Logger) *StatsHa
 // @Tags Statistics
 // @Accept json
 // @Produce json
-// @Success 200 {object} utils.Response{data=domain.Statistics}
+// @Success 200 {object} map[string]interface{} "Статистика системы"
 // @Failure 500 {object} utils.ErrorResponse
 // @Router /api/v1/stats [get]
 func (h *StatsHandler) GetStatistics(c *fiber.Ctx) error {

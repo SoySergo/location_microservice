@@ -23,8 +23,21 @@ func NewPOITileHandler(poiTileUC *usecase.POITileUseCase, logger *zap.Logger) *P
 	}
 }
 
-// GetPOITile - получение тайла с POI по категориям
-// GET /api/v1/tiles/poi/{z}/{x}/{y}.pbf?categories=healthcare,shopping&subcategories=pharmacy,hospital
+// GetPOITile godoc
+// @Summary Получение векторного тайла с POI
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с точками интереса. Поддерживает фильтрацию по категориям и подкатегориям через query параметры.
+// @Tags POI Tiles
+// @Accept json
+// @Produce application/x-protobuf
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Param categories query string false "Категории через запятую (healthcare,shopping,education)"
+// @Param subcategories query string false "Подкатегории через запятую (pharmacy,hospital,school)"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/tiles/poi/{z}/{x}/{y}.pbf [get]
 func (h *POITileHandler) GetPOITile(c *fiber.Ctx) error {
 	// Парсинг параметров тайла
 	z, err := strconv.Atoi(c.Params("z"))

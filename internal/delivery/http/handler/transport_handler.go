@@ -26,7 +26,17 @@ func NewTransportHandler(transportUC *usecase.TransportUseCase, logger *zap.Logg
 	}
 }
 
-// GetNearestStations - поиск ближайших станций транспорта
+// GetNearestStations godoc
+// @Summary Поиск ближайших станций транспорта
+// @Description Находит ближайшие станции общественного транспорта (метро, автобусы, трамваи, поезда) в указанном радиусе от точки. Возвращает информацию о станциях и проходящих через них линиях.
+// @Tags Transport
+// @Accept json
+// @Produce json
+// @Param request body dto.NearestTransportRequest true "Параметры поиска станций"
+// @Success 200 {object} utils.SuccessResponse{data=dto.NearestTransportResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/transport/nearest [post]
 func (h *TransportHandler) GetNearestStations(c *fiber.Ctx) error {
 	var req dto.NearestTransportRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -47,7 +57,17 @@ func (h *TransportHandler) GetNearestStations(c *fiber.Ctx) error {
 	})
 }
 
-// BatchGetNearestStations - пакетный поиск ближайших станций для нескольких точек
+// BatchGetNearestStations godoc
+// @Summary Пакетный поиск ближайших станций для нескольких точек
+// @Description Находит ближайшие станции общественного транспорта для нескольких точек одновременно (до 100 точек за запрос)
+// @Tags Transport
+// @Accept json
+// @Produce json
+// @Param request body dto.BatchNearestTransportRequest true "Массив точек и параметры поиска"
+// @Success 200 {object} utils.SuccessResponse{data=dto.BatchNearestTransportResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/batch/transport/nearest [post]
 func (h *TransportHandler) BatchGetNearestStations(c *fiber.Ctx) error {
 	var req dto.BatchNearestTransportRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -74,8 +94,20 @@ func (h *TransportHandler) BatchGetNearestStations(c *fiber.Ctx) error {
 	})
 }
 
-// GetTransportTileByTypes - получение тайла с транспортом с фильтрацией по типам
-// GET /api/v1/tiles/transport/{z}/{x}/{y}.pbf?types=metro,bus
+// GetTransportTileByTypes godoc
+// @Summary Получение векторного тайла с транспортом по типам
+// @Description Возвращает векторный тайл (Mapbox Vector Tile) с транспортными станциями, отфильтрованными по типам. Поддерживает фильтрацию по metro, bus, tram, train.
+// @Tags Transport Tiles
+// @Accept json
+// @Produce application/x-protobuf
+// @Param z path int true "Zoom level (0-22)"
+// @Param x path int true "Tile X coordinate"
+// @Param y path int true "Tile Y coordinate"
+// @Param types query string false "Типы транспорта через запятую (metro,bus,tram,train)"
+// @Success 200 {file} byte "Vector tile in PBF format"
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/tiles/transport/{z}/{x}/{y}.pbf [get]
 func (h *TransportHandler) GetTransportTileByTypes(c *fiber.Ctx) error {
 // Парсинг параметров тайла
 z, err := strconv.Atoi(c.Params("z"))
@@ -124,8 +156,17 @@ c.Set("Cache-Control", "public, max-age=3600")
 return c.Send(tile)
 }
 
-// GetLinesByStationID - получение линий для станции
-// GET /api/v1/transport/station/{station_id}/lines
+// GetLinesByStationID godoc
+// @Summary Получение линий для станции
+// @Description Возвращает список транспортных линий, которые проходят через указанную станцию (с информацией о цветах, операторах и т.д.)
+// @Tags Transport
+// @Accept json
+// @Produce json
+// @Param station_id path int true "ID станции"
+// @Success 200 {object} map[string]interface{} "Список линий транспорта"
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/transport/station/{station_id}/lines [get]
 func (h *TransportHandler) GetLinesByStationID(c *fiber.Ctx) error {
 // Парсинг station ID
 stationID, err := strconv.ParseInt(c.Params("station_id"), 10, 64)
