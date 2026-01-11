@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -539,4 +540,72 @@ func (r *poiRepository) resolveCategoryCode(ctx context.Context, categoryID int6
 	}
 	r.logger.Warn("category not found for id", zap.Int64("category_id", categoryID))
 	return "", pkgerrors.ErrLocationNotFound
+}
+
+// GetPOITileByCategories генерирует MVT тайл с POI по координатам тайла с фильтрацией по категориям и подкатегориям
+func (r *poiRepository) GetPOITileByCategories(ctx context.Context, z, x, y int, categories, subcategories []string) ([]byte, error) {
+	limit := getPOILimitByZoom(z)
+	args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
+	argOffset := 6
+
+	var filters []string
+	if len(categories) > 0 {
+		filters = append(filters, fmt.Sprintf("category = ANY($%d)", argOffset))
+		args = append(args, pq.Array(categories))
+		argOffset++
+	}
+	if len(subcategories) > 0 {
+		filters = append(filters, fmt.Sprintf("subcategory = ANY($%d)", argOffset))
+		args = append(args, pq.Array(subcategories))
+		argOffset++
+	}
+
+	filterClause := ""
+	if len(filters) > 0 {
+		filterClause = " AND (" + strings.Join(filters, " OR ") + ")"
+	}
+
+	query := fmt.Sprintf(`
+		WITH bounds AS (
+			SELECT ST_TileEnvelope($1, $2, $3) AS geom
+		),
+		data AS (
+			SELECT osm_id, name, category, subcategory, way
+			FROM (
+				%s
+			) src
+			WHERE way && (SELECT geom FROM bounds)%s
+		),
+		mvt_geom AS (
+			SELECT
+				osm_id AS id,
+				name,
+				category,
+				subcategory,
+				ST_AsMVTGeom(way, bounds.geom, $4, $5, true) AS geom
+			FROM data, bounds
+			WHERE way && bounds.geom
+			ORDER BY category, name
+			LIMIT %d
+		)
+		SELECT COALESCE(ST_AsMVT(mvt_geom.*, 'pois'), '\\x') AS tile
+		FROM mvt_geom
+		WHERE geom IS NOT NULL
+	`, poiSelectLite, filterClause, limit)
+
+	var tile []byte
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
+	if err == sql.ErrNoRows {
+		return []byte{}, nil
+	}
+	if err != nil {
+		r.logger.Error("failed to build osm poi tile by categories",
+			zap.Int("z", z), zap.Int("x", x), zap.Int("y", y),
+			zap.Strings("categories", categories),
+			zap.Strings("subcategories", subcategories),
+			zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+
+	return tile, nil
 }

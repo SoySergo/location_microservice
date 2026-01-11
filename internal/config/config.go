@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
+	OSMDB    DatabaseConfig
 	Redis    RedisConfig
 	Cache    CacheConfig
 	Tile     TileConfig
@@ -110,6 +111,18 @@ func Load() (*Config, error) {
 			MaxIdleConns:    viper.GetInt("DB_MAX_IDLE_CONNS"),
 			ConnMaxLifetime: time.Duration(viper.GetInt("DB_CONN_MAX_LIFETIME")) * time.Second,
 			ConnMaxIdleTime: time.Duration(viper.GetInt("DB_CONN_MAX_IDLE_TIME")) * time.Second,
+		},
+		OSMDB: DatabaseConfig{
+			Host:            viper.GetString("OSM_DB_HOST"),
+			Port:            viper.GetInt("OSM_DB_PORT"),
+			User:            viper.GetString("OSM_DB_USER"),
+			Password:        viper.GetString("OSM_DB_PASSWORD"),
+			DBName:          viper.GetString("OSM_DB_NAME"),
+			SSLMode:         viper.GetString("OSM_DB_SSLMODE"),
+			MaxConns:        viper.GetInt("OSM_DB_MAX_CONNS"),
+			MaxIdleConns:    viper.GetInt("OSM_DB_MAX_IDLE_CONNS"),
+			ConnMaxLifetime: time.Duration(viper.GetInt("OSM_DB_CONN_MAX_LIFETIME")) * time.Second,
+			ConnMaxIdleTime: time.Duration(viper.GetInt("OSM_DB_CONN_MAX_IDLE_TIME")) * time.Second,
 		},
 		Redis: RedisConfig{
 			Host:     viper.GetString("REDIS_HOST"),
@@ -243,6 +256,18 @@ func (c *Config) GetDatabaseDSN() string {
 		c.Database.Password,
 		c.Database.DBName,
 		c.Database.SSLMode,
+	)
+}
+
+func (c *Config) GetOSMDatabaseDSN() string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.OSMDB.Host,
+		c.OSMDB.Port,
+		c.OSMDB.User,
+		c.OSMDB.Password,
+		c.OSMDB.DBName,
+		c.OSMDB.SSLMode,
 	)
 }
 

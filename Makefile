@@ -1,6 +1,7 @@
 .PHONY: help build run migrate-up migrate-down migrate-force test lint clean dev run-api test-health test-endpoints
 .PHONY: test-db-up test-db-down test-db-reset test-integration test-integration-coverage
 .PHONY: build-worker run-worker
+.PHONY: build-importer run-importer import-osm build-boundary-importer run-boundary-importer
 
 DB_DSN := "postgres://postgres:postgres@localhost:5434/location_microservice?sslmode=disable"
 TEST_DB_DSN := "postgres://postgres:postgres@localhost:5433/location_test?sslmode=disable"
@@ -21,6 +22,15 @@ help:
 	@echo "  make test-endpoints - Test all endpoints"
 	@echo "  make lint         - Run linter"
 	@echo "  make clean        - Clean build artifacts"
+	@echo ""
+	@echo "OSM Importer commands:"
+	@echo "  make build-importer - Build OSM importer binary"
+	@echo "  make run-importer   - Run OSM importer"
+	@echo "  make import-osm     - Full pipeline: build, migrate, import OSM data"
+	@echo ""
+	@echo "Boundary Importer commands:"
+	@echo "  make build-boundary-importer - Build boundary importer binary"
+	@echo "  make run-boundary-importer   - Run boundary importer"
 	@echo ""
 	@echo "Test database commands:"
 	@echo "  make test-db-up   - Start test database"
@@ -122,3 +132,38 @@ test-integration-coverage: test-db-up
 	go test -v -cover -coverprofile=coverage.out ./internal/repository/postgres/...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+# OSM Importer commands
+build-importer:
+	@echo "Building OSM importer..."
+	go build -o bin/importer cmd/importer/main.go cmd/importer/config.go
+	@echo "Importer built successfully: bin/importer"
+
+run-importer:
+	@echo "Running OSM importer..."
+	go run cmd/importer/main.go cmd/importer/config.go
+
+import-osm:
+	@echo "Starting full OSM import pipeline..."
+	@echo "1. Building importer..."
+	@make build-importer
+	@echo "2. Starting database..."
+	docker-compose up -d postgres
+	@echo "3. Waiting for database to be ready..."
+	@sleep 5
+	@echo "4. Applying migrations..."
+	@make migrate-up
+	@echo "5. Running importer..."
+	./bin/importer
+	@echo "OSM import completed successfully!"
+
+# Boundary Importer commands
+build-boundary-importer:
+	@echo "Building boundary importer..."
+	go build -o bin/boundary-importer cmd/boundary-importer/*.go
+	@echo "Boundary importer built successfully: bin/boundary-importer"
+
+run-boundary-importer:
+	@echo "Running boundary importer..."
+	@echo "Usage: ADMIN_LEVELS=2,4,6,8 OSM_FILE_PATH=../test/osm_data/cataluna-251111.osm.pbf make run-boundary-importer"
+	go run cmd/boundary-importer/*.go

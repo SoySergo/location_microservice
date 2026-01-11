@@ -31,14 +31,32 @@ func (h *TileHandler) GetBoundaryTile(c *fiber.Ctx) error {
 	x, _ := strconv.Atoi(c.Params("x"))
 	y, _ := strconv.Atoi(c.Params("y"))
 
+	h.logger.Info("Boundary tile request",
+		zap.Int("z", z),
+		zap.Int("x", x),
+		zap.Int("y", y))
+
 	tile, err := h.tileUC.GetBoundaryTile(c.Context(), z, x, y)
 	if err != nil {
 		h.logger.Error("Failed to get boundary tile", zap.Error(err))
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
+	if len(tile) == 0 {
+		h.logger.Debug("Boundary tile is empty (no data in this tile)",
+			zap.Int("z", z),
+			zap.Int("x", x),
+			zap.Int("y", y))
+	} else {
+		h.logger.Info("Boundary tile generated",
+			zap.Int("z", z),
+			zap.Int("x", x),
+			zap.Int("y", y),
+			zap.Int("size", len(tile)))
+	}
+
 	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Content-Encoding", "gzip")
+	// c.Set("Content-Encoding", "gzip")
 	return c.Send(tile)
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
@@ -162,17 +163,20 @@ func (r *boundaryRepository) ReverseGeocode(
 			MAX(CASE WHEN admin_level = 2 THEN name END) AS country,
 			MAX(CASE WHEN admin_level = 4 THEN name END) AS region,
 			MAX(CASE WHEN admin_level = 6 THEN name END) AS province,
+			MAX(CASE WHEN admin_level = 7 THEN name END) AS subprovince,
 			MAX(CASE WHEN admin_level = 8 THEN name END) AS city,
-			MAX(CASE WHEN admin_level = 9 THEN name END) AS district
+			MAX(CASE WHEN admin_level = 9 THEN name END) AS district,
+			MAX(CASE WHEN admin_level = 10 THEN name END) AS subdistrict,
+			MAX(CASE WHEN admin_level = 11 THEN name END) AS neighborhood
 		FROM admin_boundaries, point
 		WHERE geometry && ST_Expand(point.geom, $3)
 		  AND ST_Contains(geometry, point.geom)
 	`
 
-	var country, region, province, city, district sql.NullString
+	var country, region, province, subprovince, city, district, subdistrict, neighborhood sql.NullString
 
 	err := r.db.QueryRowContext(ctx, query, lon, lat, BoundaryExpansionDegrees).Scan(
-		&country, &region, &province, &city, &district,
+		&country, &region, &province, &subprovince, &city, &district, &subdistrict, &neighborhood,
 	)
 
 	if err == sql.ErrNoRows || (!country.Valid && !region.Valid && !province.Valid && !city.Valid) {
@@ -194,11 +198,123 @@ func (r *boundaryRepository) ReverseGeocode(
 		City:     city.String,
 	}
 
-	if district.Valid {
+	if subprovince.Valid && subprovince.String != "" {
+		addr.Subprovince = &subprovince.String
+	}
+	if district.Valid && district.String != "" {
 		addr.District = &district.String
+	}
+	if subdistrict.Valid && subdistrict.String != "" {
+		addr.Subdistrict = &subdistrict.String
+	}
+	if neighborhood.Valid && neighborhood.String != "" {
+		addr.Neighborhood = &neighborhood.String
 	}
 
 	return addr, nil
+}
+
+// ReverseGeocodeBatch возвращает адреса для нескольких точек одним запросом
+func (r *boundaryRepository) ReverseGeocodeBatch(
+	ctx context.Context,
+	points []domain.LatLon,
+) ([]*domain.Address, error) {
+	if len(points) == 0 {
+		return []*domain.Address{}, nil
+	}
+
+	// Строим VALUES для всех точек
+	valueStrings := make([]string, len(points))
+	valueArgs := make([]interface{}, 0, len(points)*2)
+
+	for i, point := range points {
+		valueStrings[i] = fmt.Sprintf("($%d, $%d)", i*2+1, i*2+2)
+		valueArgs = append(valueArgs, point.Lon, point.Lat)
+	}
+
+	query := fmt.Sprintf(`
+		WITH input_points AS (
+			SELECT 
+				row_number() OVER () AS point_id,
+				ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
+			FROM (VALUES %s) AS t(lon, lat)
+		),
+		boundaries_per_point AS (
+			SELECT 
+				ip.point_id,
+				b.admin_level,
+				b.name
+			FROM input_points ip
+			JOIN admin_boundaries b ON b.geometry && ST_Expand(ip.geom, $%d)
+				AND ST_Contains(b.geometry, ip.geom)
+		)
+		SELECT 
+			point_id,
+			MAX(CASE WHEN admin_level = 2 THEN name END) AS country,
+			MAX(CASE WHEN admin_level = 4 THEN name END) AS region,
+			MAX(CASE WHEN admin_level = 6 THEN name END) AS province,
+			MAX(CASE WHEN admin_level = 7 THEN name END) AS subprovince,
+			MAX(CASE WHEN admin_level = 8 THEN name END) AS city,
+			MAX(CASE WHEN admin_level = 9 THEN name END) AS district,
+			MAX(CASE WHEN admin_level = 10 THEN name END) AS subdistrict,
+			MAX(CASE WHEN admin_level = 11 THEN name END) AS neighborhood
+		FROM boundaries_per_point
+		GROUP BY point_id
+		ORDER BY point_id
+	`, strings.Join(valueStrings, ","), len(valueArgs)+1)
+
+	valueArgs = append(valueArgs, BoundaryExpansionDegrees)
+
+	rows, err := r.db.QueryContext(ctx, query, valueArgs...)
+	if err != nil {
+		r.logger.Error("Failed to batch reverse geocode", zap.Int("points_count", len(points)), zap.Error(err))
+		return nil, errors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	// Создаем результирующий массив
+	results := make([]*domain.Address, len(points))
+
+	for rows.Next() {
+		var pointID int
+		var country, region, province, subprovince, city, district, subdistrict, neighborhood sql.NullString
+
+		err := rows.Scan(
+			&pointID, &country, &region, &province, &subprovince, &city, &district, &subdistrict, &neighborhood,
+		)
+		if err != nil {
+			r.logger.Error("Failed to scan batch reverse geocode row", zap.Error(err))
+			continue
+		}
+
+		// pointID начинается с 1, индексы массива с 0
+		idx := pointID - 1
+		if idx >= 0 && idx < len(results) {
+			addr := &domain.Address{
+				Country:  country.String,
+				Region:   region.String,
+				Province: province.String,
+				City:     city.String,
+			}
+
+			if subprovince.Valid && subprovince.String != "" {
+				addr.Subprovince = &subprovince.String
+			}
+			if district.Valid && district.String != "" {
+				addr.District = &district.String
+			}
+			if subdistrict.Valid && subdistrict.String != "" {
+				addr.Subdistrict = &subdistrict.String
+			}
+			if neighborhood.Valid && neighborhood.String != "" {
+				addr.Neighborhood = &neighborhood.String
+			}
+
+			results[idx] = addr
+		}
+	}
+
+	return results, nil
 }
 
 // GetTile генерирует MVT тайл для административных границ
@@ -215,14 +331,21 @@ func (r *boundaryRepository) GetTile(ctx context.Context, z, x, y int) ([]byte, 
 			SELECT 
 				id, name, type, admin_level,
 				ST_AsMVTGeom(
-					geometry,
+					ST_Transform(
+						-- Используем ST_Buffer(0) для гарантии валидности геометрии
+						CASE 
+							WHEN ST_IsValid(geometry) THEN geometry
+							ELSE ST_Buffer(geometry, 0)
+						END, 
+						3857
+					),
 					bounds.geom,
 					$4,
 					$5,
 					true
 				) AS geom
 			FROM admin_boundaries, bounds
-			WHERE geometry && bounds.geom
+			WHERE ST_Transform(geometry, 3857) && bounds.geom
 			  AND admin_level IN (%s)
 		)
 		SELECT ST_AsMVT(mvt_geom.*, 'boundaries') AS tile
@@ -461,7 +584,14 @@ func (r *boundaryRepository) GetBoundariesRadiusTile(ctx context.Context, lat, l
 			SELECT 
 				id, name, type, admin_level,
 				ST_AsMVTGeom(
-					ST_Simplify(geometry, $4),
+					ST_Simplify(
+						-- Используем ST_Buffer(0) для гарантии валидности
+						CASE 
+							WHEN ST_IsValid(geometry) THEN geometry
+							ELSE ST_Buffer(geometry, 0)
+						END,
+						$4
+					),
 					circle.geom,
 					$5,
 					$6,

@@ -128,7 +128,7 @@ func TestBoundaryRepository_SearchByText(t *testing.T) {
 		}
 
 		// Should return results even if no English names
-		if len(boundaries) < 0 {
+		if boundaries == nil {
 			t.Error("Expected some results")
 		}
 	})

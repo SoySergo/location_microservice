@@ -14,6 +14,7 @@ import (
 	"github.com/location-microservice/internal/pkg/logger"
 	"github.com/location-microservice/internal/repository/cache"
 	"github.com/location-microservice/internal/repository/postgres"
+	"github.com/location-microservice/internal/repository/postgresosm"
 	"github.com/location-microservice/internal/usecase"
 	"go.uber.org/zap"
 )
@@ -38,7 +39,7 @@ func main() {
 		zap.String("server_addr", cfg.GetServerAddr()),
 	)
 
-	// 3. Connect to PostgreSQL
+	// 3. Connect to PostgreSQL (main database)
 	db, err := postgres.New(&cfg.Database, log)
 	if err != nil {
 		log.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
@@ -49,6 +50,18 @@ func main() {
 		}
 	}()
 	log.Info("PostgreSQL connected")
+
+	// 3b. Connect to OSM PostgreSQL (osm_db with planet_osm_* tables)
+	osmDB, err := postgresosm.New(&cfg.OSMDB, log)
+	if err != nil {
+		log.Fatal("Failed to connect to OSM PostgreSQL", zap.Error(err))
+	}
+	defer func() {
+		if err := osmDB.Close(); err != nil {
+			log.Error("Failed to close OSM PostgreSQL connection", zap.Error(err))
+		}
+	}()
+	log.Info("OSM PostgreSQL connected")
 
 	// 4. Connect to Redis
 	redisClient, err := cache.NewRedis(&cfg.Redis, log)
@@ -70,6 +83,10 @@ func main() {
 		log.Fatal("PostgreSQL health check failed", zap.Error(err))
 	}
 
+	if err := osmDB.Health(ctx); err != nil {
+		log.Fatal("OSM PostgreSQL health check failed", zap.Error(err))
+	}
+
 	if err := redisClient.Health(ctx); err != nil {
 		log.Fatal("Redis health check failed", zap.Error(err))
 	}
@@ -77,10 +94,13 @@ func main() {
 	log.Info("All connections healthy")
 
 	// 6. Initialize Repositories
-	boundaryRepo := postgres.NewBoundaryRepository(db)
-	transportRepo := postgres.NewTransportRepository(db)
-	poiRepo := postgres.NewPOIRepository(db)
-	environmentRepo := postgres.NewEnvironmentRepository(db)
+	// OSM репозитории (работают с planet_osm_* таблицами из OSM базы)
+	boundaryRepo := postgresosm.NewBoundaryRepository(osmDB)
+	transportRepo := postgresosm.NewTransportRepository(osmDB)
+	poiRepo := postgresosm.NewPOIRepository(osmDB)
+	environmentRepo := postgresosm.NewEnvironmentRepository(osmDB)
+
+	// Postgres репозитории (основная база данных для статистики и других данных)
 	statsRepo := postgres.NewStatsRepository(db, log)
 	cacheRepo := cache.NewCacheRepository(redisClient)
 
@@ -184,6 +204,11 @@ func main() {
 	// Close database connections
 	if err := db.Close(); err != nil {
 		log.Error("Failed to close database", zap.Error(err))
+	}
+
+	// Close OSM database connection
+	if err := osmDB.Close(); err != nil {
+		log.Error("Failed to close OSM database", zap.Error(err))
 	}
 
 	// Close Redis connection

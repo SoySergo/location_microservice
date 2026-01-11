@@ -93,6 +93,14 @@ func (m *MockBoundaryRepository) GetBoundariesRadiusTile(ctx context.Context, la
 	return args.Get(0).([]byte), args.Error(1)
 }
 
+func (m *MockBoundaryRepository) ReverseGeocodeBatch(ctx context.Context, points []domain.LatLon) ([]*domain.Address, error) {
+	args := m.Called(ctx, points)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.Address), args.Error(1)
+}
+
 // MockTransportRepository is a mock of TransportRepository
 type MockTransportRepository struct {
 	mock.Mock
@@ -522,9 +530,9 @@ func ptrInt64(v int64) *int64 {
 }
 
 func (m *MockTransportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
-return nil, nil
+	return nil, nil
 }
 
 func (m *MockTransportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
-return nil, nil
+	return nil, nil
 }

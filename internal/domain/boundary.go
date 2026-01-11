@@ -30,9 +30,18 @@ type AdminBoundary struct {
 }
 
 type Address struct {
-	Country  string  `json:"country"`
-	Region   string  `json:"region"`
-	Province string  `json:"province"`
-	City     string  `json:"city"`
-	District *string `json:"district,omitempty"`
+	Country      string  `json:"country"`                // admin_level 2
+	Region       string  `json:"region"`                 // admin_level 4
+	Province     string  `json:"province"`               // admin_level 6
+	Subprovince  *string `json:"subprovince,omitempty"`  // admin_level 7
+	City         string  `json:"city"`                   // admin_level 8
+	District     *string `json:"district,omitempty"`     // admin_level 9
+	Subdistrict  *string `json:"subdistrict,omitempty"`  // admin_level 10
+	Neighborhood *string `json:"neighborhood,omitempty"` // admin_level 11
+}
+
+// LatLon представляет координаты точки
+type LatLon struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
 }

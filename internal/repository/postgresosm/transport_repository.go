@@ -646,3 +646,125 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 	result := append(stationsTile, linesTile...)
 	return result, nil
 }
+
+// GetTransportTileByTypes генерирует MVT тайл для транспорта с фильтрацией по типам
+func (r *transportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
+	args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
+	argOffset := 6
+
+	typeFilter := ""
+	if len(types) > 0 {
+		placeholders := make([]string, len(types))
+		for i, t := range types {
+			placeholders[i] = fmt.Sprintf("$%d", argOffset+i)
+			args = append(args, t)
+		}
+		typeFilter = fmt.Sprintf(" AND (public_transport IN (%s) OR railway IN (%s) OR route IN (%s))",
+			strings.Join(placeholders, ","), strings.Join(placeholders, ","), strings.Join(placeholders, ","))
+	}
+
+	// Станции
+	stationsQuery := fmt.Sprintf(`
+		WITH bounds AS (
+			SELECT ST_TileEnvelope($1, $2, $3) AS geom
+		),
+		stations AS (
+			SELECT 
+				osm_id AS id,
+				COALESCE(name, '') AS name,
+				COALESCE(NULLIF(public_transport, ''), NULLIF(railway, ''), 'station') AS type,
+				ST_AsMVTGeom(way, bounds.geom, $4, $5, true) AS geom
+			FROM %s, bounds
+			WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop'))
+			  AND way && bounds.geom%s
+		)
+		SELECT COALESCE(ST_AsMVT(stations.*, 'stations'), '\\x'::bytea) AS tile
+		FROM stations
+		WHERE geom IS NOT NULL
+	`, planetPointTable, typeFilter)
+
+	var stationsTile []byte
+	err := r.db.QueryRowContext(ctx, stationsQuery, args...).Scan(&stationsTile)
+	if err != nil && err != sql.ErrNoRows {
+		r.logger.Error("failed to build osm stations tile by types", zap.Int("z", z), zap.Int("x", x), zap.Int("y", y), zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+
+	// Линии
+	linesQuery := fmt.Sprintf(`
+		WITH bounds AS (
+			SELECT ST_TileEnvelope($1, $2, $3) AS geom
+		),
+		lines AS (
+			SELECT 
+				osm_id AS id,
+				COALESCE(name, '') AS name,
+				COALESCE(ref, '') AS ref,
+				COALESCE(route, '') AS type,
+				COALESCE(tags->'colour', '') AS color,
+				ST_AsMVTGeom(way, bounds.geom, $4, $5, true) AS geom
+			FROM %s, bounds
+			WHERE route IS NOT NULL
+			  AND way && bounds.geom%s
+		)
+		SELECT COALESCE(ST_AsMVT(lines.*, 'lines'), '\\x'::bytea) AS tile
+		FROM lines
+		WHERE geom IS NOT NULL
+	`, planetLineTable, typeFilter)
+
+	var linesTile []byte
+	err = r.db.QueryRowContext(ctx, linesQuery, args...).Scan(&linesTile)
+	if err != nil && err != sql.ErrNoRows {
+		r.logger.Error("failed to build osm lines tile by types", zap.Int("z", z), zap.Int("x", x), zap.Int("y", y), zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+
+	result := append(stationsTile, linesTile...)
+	return result, nil
+}
+
+// GetLinesByStationID возвращает линии для станции (для hover логики)
+func (r *transportRepository) GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error) {
+	// В OSM данных линии и станции не связаны напрямую через foreign key.
+	// Для определения линий станции используем пространственную близость
+	query := fmt.Sprintf(`
+		WITH station AS (
+			SELECT way FROM %s WHERE osm_id = $1
+		)
+		SELECT DISTINCT
+			l.osm_id,
+			COALESCE(l.name, '') AS name,
+			COALESCE(l.ref, '') AS ref,
+			COALESCE(l.route, '') AS type,
+			COALESCE(l.tags->'colour', '') AS color,
+			COALESCE(l.tags->'operator', '') AS operator,
+			COALESCE(l.tags->'network', '') AS network
+		FROM %s l, station s
+		WHERE l.route IS NOT NULL
+		  AND ST_DWithin(l.way, s.way, 100)
+		ORDER BY l.name
+		LIMIT %d
+	`, planetPointTable, planetLineTable, LimitLines)
+
+	rows, err := r.db.QueryxContext(ctx, query, stationID)
+	if err != nil {
+		r.logger.Error("failed to get lines by station", zap.Int64("station_id", stationID), zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var lines []*domain.TransportLine
+	for rows.Next() {
+		var line domain.TransportLine
+		var operator, network string
+		err := rows.Scan(&line.OSMId, &line.Name, &line.Ref, &line.Type, &line.Color, &operator, &network)
+		if err != nil {
+			r.logger.Error("failed to scan line row", zap.Error(err))
+			continue
+		}
+		line.ID = line.OSMId
+		lines = append(lines, &line)
+	}
+
+	return lines, nil
+}

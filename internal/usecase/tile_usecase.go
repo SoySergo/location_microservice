@@ -48,15 +48,30 @@ func (uc *TileUseCase) GetBoundaryTile(ctx context.Context, z, x, y int) ([]byte
 	cacheKey := fmt.Sprintf("tile:boundaries:%d:%d:%d", z, x, y)
 	cached, err := uc.cacheRepo.Get(ctx, cacheKey)
 	if err == nil && cached != nil {
+		uc.logger.Info("Boundary tile from cache",
+			zap.Int("z", z),
+			zap.Int("x", x),
+			zap.Int("y", y),
+			zap.Int("size", len(cached)))
 		return cached, nil
 	}
 
 	// Generate tile
+	uc.logger.Info("Generating boundary tile",
+		zap.Int("z", z),
+		zap.Int("x", x),
+		zap.Int("y", y))
 	tile, err := uc.boundaryRepo.GetTile(ctx, z, x, y)
 	if err != nil {
 		uc.logger.Error("Failed to get boundary tile", zap.Error(err))
 		return nil, err
 	}
+
+	uc.logger.Info("Boundary tile generated from DB",
+		zap.Int("z", z),
+		zap.Int("x", x),
+		zap.Int("y", y),
+		zap.Int("size", len(tile)))
 
 	// Cache tile
 	if err := uc.cacheRepo.Set(ctx, cacheKey, tile, uc.tileCacheTTL); err != nil {

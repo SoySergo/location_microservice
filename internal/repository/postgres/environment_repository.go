@@ -304,15 +304,15 @@ func (r *environmentRepository) GetGreenSpacesTile(ctx context.Context, z, x, y 
 				name,
 				area_sq_m,
 				ST_AsMVTGeom(
-					geometry,
+					ST_Transform(geometry, 3857),
 					ST_TileEnvelope($1, $2, $3),
 					$4,
 					$5,
 					true
 				) AS geom
 			FROM green_spaces
-			WHERE geometry && ST_TileEnvelope($1, $2, $3)
-			  AND ST_Intersects(geometry, ST_TileEnvelope($1, $2, $3))
+			WHERE ST_Transform(geometry, 3857) && ST_TileEnvelope($1, $2, $3)
+			  AND ST_Intersects(ST_Transform(geometry, 3857), ST_TileEnvelope($1, $2, $3))
 		)
 		SELECT ST_AsMVT(tile.*, 'green_spaces') AS mvt
 		FROM tile
@@ -359,15 +359,15 @@ func (r *environmentRepository) GetWaterTile(ctx context.Context, z, x, y int) (
 				type,
 				area_sq_m,
 				ST_AsMVTGeom(
-					ST_Simplify(geometry, $4),
+					ST_Transform(ST_Simplify(geometry, $4), 3857),
 					ST_TileEnvelope($1, $2, $3),
 					$5,
 					$6,
 					true
 				) AS geom
 			FROM water_bodies
-			WHERE geometry && ST_TileEnvelope($1, $2, $3)
-			  AND ST_Intersects(geometry, ST_TileEnvelope($1, $2, $3))
+			WHERE ST_Transform(geometry, 3857) && ST_TileEnvelope($1, $2, $3)
+			  AND ST_Intersects(ST_Transform(geometry, 3857), ST_TileEnvelope($1, $2, $3))
 			  %s
 		)
 		SELECT ST_AsMVT(tile.*, 'water') AS mvt
@@ -410,15 +410,15 @@ func (r *environmentRepository) GetBeachesTile(ctx context.Context, z, x, y int)
 				length as width_m,
 				blue_flag,
 				ST_AsMVTGeom(
-					geometry,
+					ST_Transform(geometry, 3857),
 					ST_TileEnvelope($1, $2, $3),
 					$4,
 					$5,
 					true
 				) AS geom
 			FROM beaches
-			WHERE geometry && ST_TileEnvelope($1, $2, $3)
-			  AND ST_Intersects(geometry, ST_TileEnvelope($1, $2, $3))
+			WHERE ST_Transform(geometry, 3857) && ST_TileEnvelope($1, $2, $3)
+			  AND ST_Intersects(ST_Transform(geometry, 3857), ST_TileEnvelope($1, $2, $3))
 		)
 		SELECT ST_AsMVT(tile.*, 'beaches') AS mvt
 		FROM tile
@@ -465,15 +465,15 @@ func (r *environmentRepository) GetNoiseSourcesTile(ctx context.Context, z, x, y
 				type,
 				intensity as noise_level,
 				ST_AsMVTGeom(
-					geometry,
+					ST_Transform(geometry, 3857),
 					ST_TileEnvelope($1, $2, $3),
 					$4,
 					$5,
 					true
 				) AS geom
 			FROM noise_sources
-			WHERE geometry && ST_TileEnvelope($1, $2, $3)
-			  AND ST_Intersects(geometry, ST_TileEnvelope($1, $2, $3))
+			WHERE ST_Transform(geometry, 3857) && ST_TileEnvelope($1, $2, $3)
+			  AND ST_Intersects(ST_Transform(geometry, 3857), ST_TileEnvelope($1, $2, $3))
 			  %s
 		)
 		SELECT ST_AsMVT(tile.*, 'noise_sources') AS mvt
@@ -520,15 +520,15 @@ func (r *environmentRepository) GetTouristZonesTile(ctx context.Context, z, x, y
 				END as importance,
 				visitors_per_year as visitor_count,
 				ST_AsMVTGeom(
-					geometry,
+					ST_Transform(geometry, 3857),
 					ST_TileEnvelope($1, $2, $3),
 					$4,
 					$5,
 					true
 				) AS geom
 			FROM tourist_zones
-			WHERE geometry && ST_TileEnvelope($1, $2, $3)
-			  AND ST_Intersects(geometry, ST_TileEnvelope($1, $2, $3))
+			WHERE ST_Transform(geometry, 3857) && ST_TileEnvelope($1, $2, $3)
+			  AND ST_Intersects(ST_Transform(geometry, 3857), ST_TileEnvelope($1, $2, $3))
 		)
 		SELECT ST_AsMVT(tile.*, 'tourist_zones') AS mvt
 		FROM tile

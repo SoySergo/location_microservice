@@ -17,6 +17,9 @@ type BoundaryRepository interface {
 	// ReverseGeocode возвращает адрес по координатам
 	ReverseGeocode(ctx context.Context, lat, lon float64) (*domain.Address, error)
 
+	// ReverseGeocodeBatch возвращает адреса для нескольких точек одним запросом
+	ReverseGeocodeBatch(ctx context.Context, points []domain.LatLon) ([]*domain.Address, error)
+
 	// GetTile генерирует MVT тайл для заданных координат
 	GetTile(ctx context.Context, z, x, y int) ([]byte, error)
 
