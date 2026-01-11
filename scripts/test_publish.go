@@ -8,10 +8,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+)
+
+const (
+	defaultResponseTimeout = 30 * time.Second
+	maxMessagesPerRead     = 10
 )
 
 type LocationEnrichEvent struct {
@@ -95,7 +101,7 @@ func main() {
 	}
 
 	// Read response
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(defaultResponseTimeout)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -107,7 +113,7 @@ func main() {
 		case <-ticker.C:
 			results, err := client.XRead(ctx, &redis.XReadArgs{
 				Streams: []string{"stream:location:done", "0"},
-				Count:   10,
+				Count:   maxMessagesPerRead,
 				Block:   0,
 			}).Result()
 			
@@ -147,6 +153,9 @@ func main() {
 }
 
 func isGroupExistsError(err error) bool {
-	return err != nil && (err.Error() == "BUSYGROUP Consumer Group name already exists" || 
-		err.Error() == "BUSYGROUP Consumer Group name already exists.")
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "BUSYGROUP Consumer Group name already exists")
 }

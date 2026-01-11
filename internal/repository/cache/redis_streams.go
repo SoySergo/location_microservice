@@ -10,7 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// NewRedisStreams creates a Redis client for working with streams
+// NewRedisStreams creates a dedicated Redis client for working with streams.
+// It connects to the Redis instance specified in cfg and returns a *redis.Client
+// that can be used for stream operations. Returns an error if the connection fails.
 func NewRedisStreams(cfg *config.RedisStreamsConfig, logger *zap.Logger) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
