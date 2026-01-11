@@ -32,7 +32,32 @@ WORKER_STREAM_READ_TIMEOUT=5000  # milliseconds
 WORKER_MAX_RETRIES=3
 WORKER_TRANSPORT_RADIUS=1000     # meters
 WORKER_TRANSPORT_TYPES=metro,train,tram,bus
+
+# Redis Cache (local) - for caching tiles, search results
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# Redis Streams (shared with backend_estate) - for location enrichment events
+REDIS_STREAMS_HOST=localhost
+REDIS_STREAMS_PORT=6380
+REDIS_STREAMS_PASSWORD=
+REDIS_STREAMS_DB=0
 ```
+
+## Redis Architecture
+
+The microservice uses **two separate Redis instances**:
+
+1. **Redis Cache (local)**: Used for caching tiles, search results, and other local data
+   - Default port: 6379
+   - Used by: API server and internal caching
+
+2. **Redis Streams (shared)**: Dedicated Redis instance shared with backend_estate
+   - Default port: 6380
+   - Used by: Worker for reading `stream:location:enrich` and writing `stream:location:done`
+   - This separation ensures stream processing is isolated from cache operations
 
 ## Building
 
@@ -162,27 +187,68 @@ docker-compose up --scale worker=3
 
 The worker requires:
 - PostgreSQL with location data
-- Redis for streams
+- Redis for streams (shared Redis on port 6380)
 
 ```bash
 # Start test infrastructure
-docker-compose up -d postgres redis
+docker-compose up -d postgres osm_db shared_redis
 
 # Run worker
 make run-worker
+```
+
+### Testing with test_publish.go
+
+A test script is provided to simulate location enrichment events from backend_estate:
+
+```bash
+# Publish a test event to shared Redis
+make test-publish
+
+# Or with custom Redis address
+make test-publish-custom REDIS_STREAMS_ADDR=localhost:6380
+
+# Check stream status
+make check-streams
+```
+
+The test script will:
+1. Connect to shared Redis (default: localhost:6380)
+2. Publish a test location event to `stream:location:enrich`
+3. Wait for the worker to process it
+4. Display the enriched result from `stream:location:done`
+
+Example output:
+```
+✅ Event published successfully!
+   Stream: stream:location:enrich
+   Message ID: 1234567890123-0
+   Property ID: 123e4567-e89b-12d3-a456-426614174000
+   Location: Barcelona, España
+   Coordinates: 41.402704, 2.159956
+
+⏳ Waiting for response in stream:location:done...
+
+✅ Response received!
+{
+  "property_id": "123e4567-e89b-12d3-a456-426614174000",
+  "enriched_location": { ... },
+  "nearest_transport": [ ... ]
+}
 ```
 
 ## Troubleshooting
 
 ### Worker doesn't start
 - Check `WORKER_ENABLED=true` in `.env`
-- Verify Redis connection
+- Verify Redis Streams connection (port 6380)
 - Verify PostgreSQL connection
 
 ### No messages processed
-- Check Redis stream exists: `redis-cli XINFO STREAM stream:location:enrich`
-- Verify consumer group: `redis-cli XINFO GROUPS stream:location:enrich`
-- Check backend_estate is publishing messages
+- Check Redis stream exists: `redis-cli -p 6380 XINFO STREAM stream:location:enrich`
+- Verify consumer group: `redis-cli -p 6380 XINFO GROUPS stream:location:enrich`
+- Check backend_estate is publishing messages to the correct Redis instance (shared_redis)
+- Use `make check-streams` to verify stream status
 
 ### Location not found errors
 - Verify database has location data

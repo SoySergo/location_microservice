@@ -3,6 +3,7 @@
 .PHONY: build-worker run-worker
 .PHONY: build-importer run-importer import-osm build-boundary-importer run-boundary-importer
 .PHONY: swagger swagger-serve
+.PHONY: test-publish test-publish-custom check-streams
 
 DB_DSN := "postgres://postgres:postgres@localhost:5434/location_microservice?sslmode=disable"
 TEST_DB_DSN := "postgres://postgres:postgres@localhost:5433/location_test?sslmode=disable"
@@ -43,6 +44,11 @@ help:
 	@echo "  make test-db-reset- Reset test database (remove all data)"
 	@echo "  make test-integration - Run integration tests"
 	@echo "  make test-integration-coverage - Run integration tests with coverage"
+	@echo ""
+	@echo "Redis Streams testing commands:"
+	@echo "  make test-publish        - Test publishing event to shared Redis"
+	@echo "  make test-publish-custom - Test with custom Redis address"
+	@echo "  make check-streams       - Check Redis streams status"
 
 build:
 	go build -o bin/api cmd/api/main.go
@@ -189,3 +195,21 @@ swagger:
 swagger-serve:
 	@echo "Starting Swagger UI on http://localhost:8081"
 	docker run -p 8081:8080 -e SWAGGER_JSON=/docs/swagger.json -v $(PWD)/docs/swagger:/docs swaggerapi/swagger-ui
+
+# Redis Streams testing
+test-publish:
+	go run scripts/test_publish.go -redis=localhost:6380
+
+test-publish-custom:
+	@if [ -z "$(REDIS_STREAMS_ADDR)" ]; then \
+		echo "Usage: make test-publish-custom REDIS_STREAMS_ADDR=localhost:6380"; \
+		exit 1; \
+	fi
+	go run scripts/test_publish.go -redis=$(REDIS_STREAMS_ADDR)
+
+check-streams:
+	@echo "=== stream:location:enrich ==="
+	@docker exec shared_redis redis-cli XINFO STREAM stream:location:enrich 2>/dev/null || echo "Stream does not exist"
+	@echo ""
+	@echo "=== stream:location:done ==="
+	@docker exec shared_redis redis-cli XINFO STREAM stream:location:done 2>/dev/null || echo "Stream does not exist"

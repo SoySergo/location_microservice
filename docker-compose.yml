@@ -31,6 +31,20 @@ services:
       timeout: 3s
       retries: 5
 
+  shared_redis:
+    image: redis:7-alpine
+    container_name: shared_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - shared_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   osm_db:
     image: postgis/postgis:15-3.4
     container_name: osm_postgres
@@ -87,4 +101,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  shared_redis_data:
   osm_data:
