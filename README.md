@@ -25,3 +25,37 @@
 
 - API Documentation: `docs/INDEX.md`
 - Worker Documentation: `docs/WORKER.md`
+- **Swagger API Documentation**: `http://localhost:8080/swagger/` (when server is running)
+
+## Swagger Documentation
+
+Проект использует Swagger/OpenAPI для документирования API endpoints.
+
+### Просмотр документации
+
+1. Запустите API сервер: `make run` или `go run cmd/api/main.go`
+2. Откройте в браузере: http://localhost:8080/swagger/
+3. Интерактивная документация Swagger UI будет доступна для тестирования всех endpoints
+
+### Генерация Swagger документации
+
+После изменения API handlers или добавления новых endpoints:
+
+```bash
+make swagger
+```
+
+Это сгенерирует файлы в `docs/swagger/`:
+- `swagger.json` - OpenAPI спецификация в JSON
+- `swagger.yaml` - OpenAPI спецификация в YAML  
+- `docs.go` - Go файл с встроенной документацией
+
+### Swagger UI в Docker
+
+Для просмотра документации без запуска всего сервера:
+
+```bash
+make swagger-serve
+```
+
+Откроется Swagger UI на http://localhost:8081

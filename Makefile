@@ -2,6 +2,7 @@
 .PHONY: test-db-up test-db-down test-db-reset test-integration test-integration-coverage
 .PHONY: build-worker run-worker
 .PHONY: build-importer run-importer import-osm build-boundary-importer run-boundary-importer
+.PHONY: swagger swagger-serve
 
 DB_DSN := "postgres://postgres:postgres@localhost:5434/location_microservice?sslmode=disable"
 TEST_DB_DSN := "postgres://postgres:postgres@localhost:5433/location_test?sslmode=disable"
@@ -31,6 +32,10 @@ help:
 	@echo "Boundary Importer commands:"
 	@echo "  make build-boundary-importer - Build boundary importer binary"
 	@echo "  make run-boundary-importer   - Run boundary importer"
+	@echo ""
+	@echo "Swagger commands:"
+	@echo "  make swagger       - Generate Swagger documentation"
+	@echo "  make swagger-serve - Serve Swagger UI in Docker"
 	@echo ""
 	@echo "Test database commands:"
 	@echo "  make test-db-up   - Start test database"
@@ -167,3 +172,20 @@ run-boundary-importer:
 	@echo "Running boundary importer..."
 	@echo "Usage: ADMIN_LEVELS=2,4,6,8 OSM_FILE_PATH=../test/osm_data/cataluna-251111.osm.pbf make run-boundary-importer"
 	go run cmd/boundary-importer/*.go
+
+# Swagger commands
+swagger:
+	@echo "Generating Swagger documentation..."
+	@if [ -f ~/go/bin/swag ]; then \
+		~/go/bin/swag init -g cmd/api/main.go -o docs/swagger --parseDependency --parseInternal; \
+	elif command -v swag >/dev/null 2>&1; then \
+		swag init -g cmd/api/main.go -o docs/swagger --parseDependency --parseInternal; \
+	else \
+		echo "Error: swag is not installed. Install it with: go install github.com/swaggo/swag/cmd/swag@latest"; \
+		exit 1; \
+	fi
+	@echo "Swagger documentation generated in docs/swagger/"
+
+swagger-serve:
+	@echo "Starting Swagger UI on http://localhost:8081"
+	docker run -p 8081:8080 -e SWAGGER_JSON=/docs/swagger.json -v $(PWD)/docs/swagger:/docs swaggerapi/swagger-ui

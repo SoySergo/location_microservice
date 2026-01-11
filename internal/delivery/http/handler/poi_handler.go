@@ -23,7 +23,17 @@ func NewPOIHandler(poiUC *usecase.POIUseCase, logger *zap.Logger) *POIHandler {
 	}
 }
 
-// SearchByRadius - поиск POI в радиусе
+// SearchByRadius godoc
+// @Summary Поиск точек интереса (POI) в радиусе
+// @Description Находит точки интереса (магазины, рестораны, больницы и т.д.) в указанном радиусе от точки. Поддерживает фильтрацию по категориям.
+// @Tags POI
+// @Accept json
+// @Produce json
+// @Param request body dto.RadiusPOIRequest true "Параметры поиска POI"
+// @Success 200 {object} utils.SuccessResponse{data=dto.RadiusPOIResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/radius/poi [post]
 func (h *POIHandler) SearchByRadius(c *fiber.Ctx) error {
 	var req dto.RadiusPOIRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -44,7 +54,16 @@ func (h *POIHandler) SearchByRadius(c *fiber.Ctx) error {
 	})
 }
 
-// GetCategories - получение списка категорий POI
+// GetCategories godoc
+// @Summary Получение списка категорий POI
+// @Description Возвращает полный список доступных категорий точек интереса (healthcare, shopping, education и т.д.) на указанном языке
+// @Tags POI
+// @Accept json
+// @Produce json
+// @Param language query string false "Язык результатов (en, es, ca, ru, uk, fr, pt, it, de)" default(en)
+// @Success 200 {object} utils.SuccessResponse{data=map[string]interface{}}
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/poi/categories [get]
 func (h *POIHandler) GetCategories(c *fiber.Ctx) error {
 	lang := c.Query("language", "en")
 
@@ -60,7 +79,18 @@ func (h *POIHandler) GetCategories(c *fiber.Ctx) error {
 	})
 }
 
-// GetSubcategories - получение подкатегорий для категории
+// GetSubcategories godoc
+// @Summary Получение подкатегорий для категории
+// @Description Возвращает список подкатегорий для указанной категории POI (например, для healthcare: pharmacy, hospital, clinic)
+// @Tags POI
+// @Accept json
+// @Produce json
+// @Param id path int true "ID категории"
+// @Param language query string false "Язык результатов (en, es, ca, ru, uk, fr, pt, it, de)" default(en)
+// @Success 200 {object} utils.SuccessResponse{data=map[string]interface{}}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/poi/categories/{id}/subcategories [get]
 func (h *POIHandler) GetSubcategories(c *fiber.Ctx) error {
 	// Parse int ID from path parameter (ParamsInt already handles parsing)
 	categoryID, err := c.ParamsInt("id")

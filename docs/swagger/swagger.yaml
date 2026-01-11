@@ -1,0 +1,1200 @@
+basePath: /
+definitions:
+  github_com_location-microservice_internal_domain.Address:
+    properties:
+      city:
+        description: admin_level 8
+        type: string
+      country:
+        description: admin_level 2
+        type: string
+      district:
+        description: admin_level 9
+        type: string
+      neighborhood:
+        description: admin_level 11
+        type: string
+      province:
+        description: admin_level 6
+        type: string
+      region:
+        description: admin_level 4
+        type: string
+      subdistrict:
+        description: admin_level 10
+        type: string
+      subprovince:
+        description: admin_level 7
+        type: string
+    type: object
+  github_com_location-microservice_internal_pkg_errors.AppError:
+    properties:
+      code:
+        type: string
+      details:
+        additionalProperties: true
+        type: object
+      message:
+        type: string
+    type: object
+  github_com_location-microservice_internal_pkg_utils.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/github_com_location-microservice_internal_pkg_errors.AppError'
+    type: object
+  github_com_location-microservice_internal_pkg_utils.Meta:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      time_ms:
+        type: number
+      total:
+        type: integer
+    type: object
+  github_com_location-microservice_internal_pkg_utils.SuccessResponse:
+    properties:
+      data: {}
+      meta:
+        $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.Meta'
+    type: object
+  github_com_location-microservice_internal_usecase_dto.BatchNearestTransportRequest:
+    properties:
+      max_distance:
+        description: meters
+        maximum: 10000
+        minimum: 100
+        type: number
+      points:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.Point'
+        maxItems: 100
+        minItems: 1
+        type: array
+      types:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - points
+    - types
+    type: object
+  github_com_location-microservice_internal_usecase_dto.BatchNearestTransportResponse:
+    properties:
+      results:
+        items:
+          items:
+            $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportStationWithLines'
+          type: array
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.BatchReverseGeocodeRequest:
+    properties:
+      points:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.Point'
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - points
+    type: object
+  github_com_location-microservice_internal_usecase_dto.BatchReverseGeocodeResponse:
+    properties:
+      addresses:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_domain.Address'
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.NearestTransportRequest:
+    properties:
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+      max_distance:
+        description: meters
+        maximum: 10000
+        minimum: 100
+        type: number
+      types:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - lat
+    - lon
+    - types
+    type: object
+  github_com_location-microservice_internal_usecase_dto.NearestTransportResponse:
+    properties:
+      stations:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportStationWithLines'
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.POISimple:
+    properties:
+      category:
+        type: string
+      distance:
+        description: meters
+        type: number
+      id:
+        description: Converted to string for frontend
+        type: string
+      lat:
+        type: number
+      lon:
+        type: number
+      name:
+        type: string
+      subcategory:
+        type: string
+    type: object
+  github_com_location-microservice_internal_usecase_dto.Point:
+    properties:
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+    required:
+    - lat
+    - lon
+    type: object
+  github_com_location-microservice_internal_usecase_dto.RadiusPOIRequest:
+    properties:
+      categories:
+        items:
+          type: string
+        type: array
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      limit:
+        maximum: 500
+        minimum: 1
+        type: integer
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+      radius_km:
+        maximum: 100
+        minimum: 0.1
+        type: number
+    required:
+    - lat
+    - lon
+    - radius_km
+    type: object
+  github_com_location-microservice_internal_usecase_dto.RadiusPOIResponse:
+    properties:
+      pois:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.POISimple'
+        type: array
+      total:
+        type: integer
+    type: object
+  github_com_location-microservice_internal_usecase_dto.RadiusTilesRequest:
+    properties:
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      layers:
+        items:
+          type: string
+        type: array
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+      radius_km:
+        maximum: 50
+        minimum: 0.1
+        type: number
+    required:
+    - lat
+    - lon
+    - radius_km
+    type: object
+  github_com_location-microservice_internal_usecase_dto.ReverseGeocodeRequest:
+    properties:
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+    required:
+    - lat
+    - lon
+    type: object
+  github_com_location-microservice_internal_usecase_dto.ReverseGeocodeResponse:
+    properties:
+      address:
+        $ref: '#/definitions/github_com_location-microservice_internal_domain.Address'
+    type: object
+  github_com_location-microservice_internal_usecase_dto.SearchResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.SearchResult'
+        type: array
+      total:
+        type: integer
+    type: object
+  github_com_location-microservice_internal_usecase_dto.SearchResult:
+    properties:
+      admin_level:
+        type: integer
+      area_sq_km:
+        type: number
+      center_lat:
+        type: number
+      center_lon:
+        type: number
+      id:
+        description: Converted to string for frontend
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+  github_com_location-microservice_internal_usecase_dto.TransportLineSimple:
+    properties:
+      color:
+        type: string
+      id:
+        description: Converted to string for frontend
+        type: string
+      name:
+        type: string
+      ref:
+        type: string
+    type: object
+  github_com_location-microservice_internal_usecase_dto.TransportLinesRequest:
+    properties:
+      ids:
+        items:
+          type: string
+        maxItems: 50
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
+  github_com_location-microservice_internal_usecase_dto.TransportStationWithLines:
+    properties:
+      distance:
+        description: meters
+        type: number
+      id:
+        description: Converted to string for frontend
+        type: string
+      lat:
+        type: number
+      lines:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportLineSimple'
+        type: array
+      lon:
+        type: number
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@location-microservice.com
+    name: API Support
+  description: |-
+    Микросервис для работы с геопространственными данными из OpenStreetMap. Предоставляет API для поиска административных границ, транспортной инфраструктуры, точек интереса (POI), а также векторных тайлов для визуализации на картах.
+
+    Основные возможности:
+    - Поиск и обратное геокодирование административных границ
+    - Поиск ближайших транспортных станций (метро, автобусы, трамваи)
+    - Поиск точек интереса по категориям в радиусе
+    - Получение векторных тайлов (MVT/PBF) для всех типов данных
+    - Статистика по загруженным данным
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Location Microservice API
+  version: 1.0.0
+paths:
+  /api/v1/batch/reverse-geocode:
+    post:
+      consumes:
+      - application/json
+      description: Определяет административные адреса для нескольких точек за один
+        запрос (до 100 точек)
+      parameters:
+      - description: Массив координат точек
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BatchReverseGeocodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BatchReverseGeocodeResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Пакетное обратное геокодирование
+      tags:
+      - Search
+  /api/v1/batch/transport/nearest:
+    post:
+      consumes:
+      - application/json
+      description: Находит ближайшие станции общественного транспорта для нескольких
+        точек одновременно (до 100 точек за запрос)
+      parameters:
+      - description: Массив точек и параметры поиска
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BatchNearestTransportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BatchNearestTransportResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Пакетный поиск ближайших станций для нескольких точек
+      tags:
+      - Transport
+  /api/v1/beaches/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: 'Возвращает векторный тайл (Mapbox Vector Tile) с пляжами. Минимальный
+        уровень зума: 12.'
+      parameters:
+      - description: 'Zoom level (min: 12, max: 22)'
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Minimum zoom level is 12
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с пляжами
+      tags:
+      - Tiles
+  /api/v1/boundaries/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает подробную информацию об административной границе по
+        её идентификатору
+      parameters:
+      - description: ID административной границы
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Информация о границе
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Получение границы по ID
+      tags:
+      - Search
+  /api/v1/boundaries/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с административными
+        границами (страны, регионы, провинции, города, районы)
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/x-protobuf
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с административными границами
+      tags:
+      - Tiles
+  /api/v1/green-spaces/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с парками, садами
+        и другими зелеными пространствами
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/x-protobuf
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с зелеными зонами
+      tags:
+      - Tiles
+  /api/v1/noise-sources/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с источниками шума
+        (дороги, железные дороги, аэропорты)
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с источниками шума
+      tags:
+      - Tiles
+  /api/v1/poi/categories:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает полный список доступных категорий точек интереса (healthcare,
+        shopping, education и т.д.) на указанном языке
+      parameters:
+      - default: en
+        description: Язык результатов (en, es, ca, ru, uk, fr, pt, it, de)
+        in: query
+        name: language
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  additionalProperties: true
+                  type: object
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Получение списка категорий POI
+      tags:
+      - POI
+  /api/v1/poi/categories/{id}/subcategories:
+    get:
+      consumes:
+      - application/json
+      description: 'Возвращает список подкатегорий для указанной категории POI (например,
+        для healthcare: pharmacy, hospital, clinic)'
+      parameters:
+      - description: ID категории
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: en
+        description: Язык результатов (en, es, ca, ru, uk, fr, pt, it, de)
+        in: query
+        name: language
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  additionalProperties: true
+                  type: object
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Получение подкатегорий для категории
+      tags:
+      - POI
+  /api/v1/radius/poi:
+    post:
+      consumes:
+      - application/json
+      description: Находит точки интереса (магазины, рестораны, больницы и т.д.) в
+        указанном радиусе от точки. Поддерживает фильтрацию по категориям.
+      parameters:
+      - description: Параметры поиска POI
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.RadiusPOIRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.RadiusPOIResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Поиск точек интереса (POI) в радиусе
+      tags:
+      - POI
+  /api/v1/radius/tiles.pbf:
+    post:
+      consumes:
+      - application/json
+      description: 'Возвращает векторный тайл (Mapbox Vector Tile) со всеми типами
+        данных в указанном радиусе от точки: границы, транспорт, POI, зеленые зоны,
+        воду и т.д. Можно фильтровать слои через параметр layers.'
+      parameters:
+      - description: Координаты центра, радиус и опциональный список слоев
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.RadiusTilesRequest'
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение всех данных в радиусе в формате векторного тайла
+      tags:
+      - Tiles
+  /api/v1/reverse-geocode:
+    post:
+      consumes:
+      - application/json
+      description: Определяет административный адрес (страна, регион, провинция, город,
+        район) по географическим координатам
+      parameters:
+      - description: Координаты точки
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.ReverseGeocodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.ReverseGeocodeResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Обратное геокодирование
+      tags:
+      - Search
+  /api/v1/search:
+    get:
+      consumes:
+      - application/json
+      description: Выполняет полнотекстовый поиск по административным границам (страны,
+        регионы, города, районы). Поддерживает поиск на разных языках и фильтрацию
+        по административным уровням.
+      parameters:
+      - description: Поисковый запрос (минимум 2 символа)
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: en
+        description: Язык результатов (en, es, ca, ru, uk, fr, pt, it, de)
+        in: query
+        name: language
+        type: string
+      - default: 10
+        description: Максимальное количество результатов
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.SearchResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Поиск административных границ по тексту
+      tags:
+      - Search
+  /api/v1/stats:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает агрегированную статистику по всем данным в системе
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Статистика системы
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Get system statistics
+      tags:
+      - Statistics
+  /api/v1/tiles/poi/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с точками интереса.
+        Поддерживает фильтрацию по категориям и подкатегориям через query параметры.
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      - description: Категории через запятую (healthcare,shopping,education)
+        in: query
+        name: categories
+        type: string
+      - description: Подкатегории через запятую (pharmacy,hospital,school)
+        in: query
+        name: subcategories
+        type: string
+      produces:
+      - application/x-protobuf
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получение векторного тайла с POI
+      tags:
+      - POI Tiles
+  /api/v1/tiles/transport/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с транспортными
+        станциями, отфильтрованными по типам. Поддерживает фильтрацию по metro, bus,
+        tram, train.
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      - description: Типы транспорта через запятую (metro,bus,tram,train)
+        in: query
+        name: types
+        type: string
+      produces:
+      - application/x-protobuf
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получение векторного тайла с транспортом по типам
+      tags:
+      - Transport Tiles
+  /api/v1/tourist-zones/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: 'Возвращает векторный тайл (Mapbox Vector Tile) с туристическими
+        зонами и достопримечательностями. Минимальный уровень зума: 11.'
+      parameters:
+      - description: 'Zoom level (min: 11, max: 22)'
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Minimum zoom level is 11
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с туристическими зонами
+      tags:
+      - Tiles
+  /api/v1/transport/lines.pbf:
+    post:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с геометрией и станциями
+        нескольких транспортных линий (до 50 линий за запрос)
+      parameters:
+      - description: Массив ID линий
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportLinesRequest'
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Invalid request or too many IDs
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла для нескольких транспортных линий
+      tags:
+      - Transport Tiles
+  /api/v1/transport/lines/{id}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с геометрией и станциями
+        указанной транспортной линии
+      parameters:
+      - description: ID транспортной линии
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "400":
+          description: Invalid line ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла для одной транспортной линии
+      tags:
+      - Transport Tiles
+  /api/v1/transport/nearest:
+    post:
+      consumes:
+      - application/json
+      description: Находит ближайшие станции общественного транспорта (метро, автобусы,
+        трамваи, поезда) в указанном радиусе от точки. Возвращает информацию о станциях
+        и проходящих через них линиях.
+      parameters:
+      - description: Параметры поиска станций
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.NearestTransportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.NearestTransportResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Поиск ближайших станций транспорта
+      tags:
+      - Transport
+  /api/v1/transport/station/{station_id}/lines:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает список транспортных линий, которые проходят через указанную
+        станцию (с информацией о цветах, операторах и т.д.)
+      parameters:
+      - description: ID станции
+        in: path
+        name: station_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Список линий транспорта
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получение линий для станции
+      tags:
+      - Transport
+  /api/v1/transport/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) со всеми транспортными
+        станциями и линиями без фильтрации
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/x-protobuf
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с транспортом
+      tags:
+      - Tiles
+  /api/v1/water/tiles/{z}/{x}/{y}.pbf:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает векторный тайл (Mapbox Vector Tile) с реками, озерами,
+        морями и другими водными объектами
+      parameters:
+      - description: Zoom level (0-22)
+        in: path
+        name: z
+        required: true
+        type: integer
+      - description: Tile X coordinate
+        in: path
+        name: x
+        required: true
+        type: integer
+      - description: Tile Y coordinate
+        in: path
+        name: "y"
+        required: true
+        type: integer
+      produces:
+      - application/vnd.mapbox-vector-tile
+      responses:
+        "200":
+          description: Vector tile in PBF format
+          schema:
+            type: file
+        "500":
+          description: Failed to generate tile
+          schema:
+            type: string
+      summary: Получение векторного тайла с водными объектами
+      tags:
+      - Tiles
+schemes:
+- http
+- https
+swagger: "2.0"
