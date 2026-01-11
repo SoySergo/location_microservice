@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: location_microservice
     ports:
-      - "5434:5432"
+      - "5436:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
@@ -31,6 +31,60 @@ services:
       timeout: 3s
       retries: 5
 
+  osm_db:
+    image: postgis/postgis:15-3.4
+    container_name: osm_postgres
+    environment:
+      POSTGRES_DB: osm
+      POSTGRES_USER: osmuser
+      POSTGRES_PASSWORD: osmpass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5435:5432"
+    volumes:
+      - osm_data:/var/lib/postgresql/data
+      - ../test/osm_data:/osm_data:ro
+      - ../test/scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osmuser -d osm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  osm2pgsql:
+    image: iboates/osm2pgsql:latest
+    container_name: osm2pgsql_loader
+    depends_on:
+      osm_db:
+        condition: service_healthy
+    environment:
+      PGHOST: osm_db
+      PGPORT: 5432
+      PGDATABASE: osm
+      PGUSER: osmuser
+      PGPASSWORD: osmpass
+    volumes:
+      - ../test/osm_data:/osm_data:ro
+      - ../test/scripts:/scripts:ro
+    command: >
+      osm2pgsql
+      --create
+      --slim
+      --drop
+      --cache 800
+      --number-processes 2
+      --hstore
+      --style /scripts/default.style
+      --multi-geometry
+      --database osm
+      --username osmuser
+      --host osm_db
+      --port 5432
+      /osm_data/cataluna-251111.osm.pbf
+    profiles:
+      - osm
+
 volumes:
   postgres_data:
   redis_data:
+  osm_data:
