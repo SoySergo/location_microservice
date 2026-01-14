@@ -25,7 +25,7 @@ const (
 type LocationEnrichmentWorker struct {
 	*worker.BaseWorker
 	streamRepo         repository.StreamRepository
-	enrichedLocationUC *usecase.EnrichedLocationUseCase
+	enrichedLocationUC usecase.BatchLocationEnricher
 	consumerName       string
 	maxRetries         int
 }
@@ -33,7 +33,7 @@ type LocationEnrichmentWorker struct {
 // NewLocationEnrichmentWorker создает новый LocationEnrichmentWorker
 func NewLocationEnrichmentWorker(
 	streamRepo repository.StreamRepository,
-	enrichedLocationUC *usecase.EnrichedLocationUseCase,
+	enrichedLocationUC usecase.BatchLocationEnricher,
 	consumerGroup string,
 	maxRetries int,
 	logger *zap.Logger,

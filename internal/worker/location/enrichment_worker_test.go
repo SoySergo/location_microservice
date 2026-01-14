@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/location-microservice/internal/domain"
+	"github.com/location-microservice/internal/usecase/dto"
 	"github.com/location-microservice/internal/worker/location"
 )
 
@@ -28,8 +29,21 @@ func (m *MockStreamRepository) ConsumeStream(ctx context.Context, stream, group,
 	return args.Get(0).(<-chan domain.StreamMessage), args.Error(1)
 }
 
+func (m *MockStreamRepository) ConsumeBatch(ctx context.Context, stream, group, consumer string, maxCount int) ([]domain.StreamMessage, error) {
+	args := m.Called(ctx, stream, group, consumer, maxCount)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.StreamMessage), args.Error(1)
+}
+
 func (m *MockStreamRepository) AckMessage(ctx context.Context, stream, group, messageID string) error {
 	args := m.Called(ctx, stream, group, messageID)
+	return args.Error(0)
+}
+
+func (m *MockStreamRepository) AckMessages(ctx context.Context, stream, group string, messageIDs []string) error {
+	args := m.Called(ctx, stream, group, messageIDs)
 	return args.Error(0)
 }
 
@@ -43,129 +57,23 @@ func (m *MockStreamRepository) PublishToStream(ctx context.Context, stream strin
 	return args.Error(0)
 }
 
-// MockEnrichmentUseCase is a mock of EnrichmentUseCase
-type MockEnrichmentUseCase struct {
+// MockEnrichedLocationUseCase is a mock of EnrichedLocationUseCase
+type MockEnrichedLocationUseCase struct {
 	mock.Mock
 }
 
-func (m *MockEnrichmentUseCase) EnrichLocation(ctx context.Context, event *domain.LocationEnrichEvent) (*domain.LocationDoneEvent, error) {
-	args := m.Called(ctx, event)
+func (m *MockEnrichedLocationUseCase) EnrichLocationBatch(ctx context.Context, req dto.EnrichLocationBatchRequest) (*dto.EnrichLocationBatchResponse, error) {
+	args := m.Called(ctx, req)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*domain.LocationDoneEvent), args.Error(1)
-}
-
-// TestLocationEnrichmentWorker_ProcessMessage_Success tests successful message processing
-func TestLocationEnrichmentWorker_ProcessMessage_Success(t *testing.T) {
-	// Arrange
-	mockStream := &MockStreamRepository{}
-	mockUseCase := &MockEnrichmentUseCase{}
-
-	// Create a mock enrichment use case wrapper
-	// Since we can't mock the actual usecase, we'll test the worker's message handling
-	propertyID := uuid.New()
-	city := "Barcelona"
-	lat := 41.3851
-	lon := 2.1734
-
-	inputEvent := &domain.LocationEnrichEvent{
-		PropertyID: propertyID,
-		Country:    "Spain",
-		City:       &city,
-		Latitude:   &lat,
-		Longitude:  &lon,
-	}
-
-	outputEvent := &domain.LocationDoneEvent{
-		PropertyID: propertyID,
-		EnrichedLocation: &domain.EnrichedLocation{
-			CountryID:        ptrInt64(1),
-			CityID:           ptrInt64(100),
-			IsAddressVisible: ptrBool(true),
-		},
-		NearestTransport: []domain.NearestStation{
-			{
-				StationID: 500,
-				Name:      "Passeig de Gràcia",
-				Type:      "metro",
-				Distance:  350.5,
-			},
-		},
-	}
-
-	// Mock CreateConsumerGroup
-	mockStream.On("CreateConsumerGroup", mock.Anything, domain.StreamLocationEnrich, "test-group").
-		Return(nil)
-
-	// Create a channel for messages
-	msgChan := make(chan domain.StreamMessage, 1)
-
-	// Marshal input event
-	eventJSON, _ := json.Marshal(inputEvent)
-	msgChan <- domain.StreamMessage{
-		ID:   "1234567890-0",
-		Data: string(eventJSON),
-	}
-	close(msgChan)
-
-	mockStream.On("ConsumeStream", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string")).
-		Return((<-chan domain.StreamMessage)(msgChan), nil)
-
-	// Mock enrichment
-	mockUseCase.On("EnrichLocation", mock.Anything, mock.MatchedBy(func(e *domain.LocationEnrichEvent) bool {
-		return e.PropertyID == propertyID
-	})).Return(outputEvent, nil)
-
-	// Mock publish result
-	mockStream.On("PublishToStream", mock.Anything, domain.StreamLocationDone, outputEvent).
-		Return(nil)
-
-	// Mock ACK
-	mockStream.On("AckMessage", mock.Anything, domain.StreamLocationEnrich, "test-group", "1234567890-0").
-		Return(nil)
-
-	// Note: We can't directly test the private processMessage method,
-	// but we can verify the mocks were called through the worker's Start method
-	// This test validates our mocking setup
-
-	mockStream.AssertNotCalled(t, "ConsumeStream")
-	mockStream.AssertNotCalled(t, "PublishToStream")
-	mockStream.AssertNotCalled(t, "AckMessage")
-}
-
-// TestLocationEnrichmentWorker_ProcessMalformedMessage tests handling of malformed JSON
-func TestLocationEnrichmentWorker_ProcessMalformedMessage(t *testing.T) {
-	// This test ensures malformed messages are logged and ACK'd without publishing errors
-	mockStream := &MockStreamRepository{}
-
-	// Mock CreateConsumerGroup
-	mockStream.On("CreateConsumerGroup", mock.Anything, domain.StreamLocationEnrich, "test-group").
-		Return(nil)
-
-	// Create a channel with malformed message
-	msgChan := make(chan domain.StreamMessage, 1)
-	msgChan <- domain.StreamMessage{
-		ID:   "1234567890-0",
-		Data: "invalid json {{{",
-	}
-	close(msgChan)
-
-	mockStream.On("ConsumeStream", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string")).
-		Return((<-chan domain.StreamMessage)(msgChan), nil)
-
-	// Mock ACK - malformed messages should be ACK'd to prevent reprocessing
-	mockStream.On("AckMessage", mock.Anything, domain.StreamLocationEnrich, "test-group", "1234567890-0").
-		Return(nil)
-
-	// PublishToStream should NOT be called for malformed messages
-	mockStream.AssertNotCalled(t, "PublishToStream")
+	return args.Get(0).(*dto.EnrichLocationBatchResponse), args.Error(1)
 }
 
 // TestLocationEnrichmentWorker_Name tests the worker name
 func TestLocationEnrichmentWorker_Name(t *testing.T) {
 	mockStream := &MockStreamRepository{}
-	mockUseCase := &MockEnrichmentUseCase{}
+	mockUseCase := &MockEnrichedLocationUseCase{}
 	logger := zap.NewNop()
 
 	worker := location.NewLocationEnrichmentWorker(
@@ -182,7 +90,7 @@ func TestLocationEnrichmentWorker_Name(t *testing.T) {
 // TestLocationEnrichmentWorker_Stop tests graceful stop
 func TestLocationEnrichmentWorker_Stop(t *testing.T) {
 	mockStream := &MockStreamRepository{}
-	mockUseCase := &MockEnrichmentUseCase{}
+	mockUseCase := &MockEnrichedLocationUseCase{}
 	logger := zap.NewNop()
 
 	worker := location.NewLocationEnrichmentWorker(
@@ -205,7 +113,7 @@ func TestLocationEnrichmentWorker_Stop(t *testing.T) {
 // TestLocationEnrichmentWorker_ContextCancellation tests worker stops on context cancellation
 func TestLocationEnrichmentWorker_ContextCancellation(t *testing.T) {
 	mockStream := &MockStreamRepository{}
-	mockUseCase := &MockEnrichmentUseCase{}
+	mockUseCase := &MockEnrichedLocationUseCase{}
 	logger := zap.NewNop()
 
 	worker := location.NewLocationEnrichmentWorker(
@@ -220,11 +128,9 @@ func TestLocationEnrichmentWorker_ContextCancellation(t *testing.T) {
 	mockStream.On("CreateConsumerGroup", mock.Anything, domain.StreamLocationEnrich, "test-group").
 		Return(nil)
 
-	// Create a channel that stays open (blocking)
-	msgChan := make(chan domain.StreamMessage)
-
-	mockStream.On("ConsumeStream", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string")).
-		Return((<-chan domain.StreamMessage)(msgChan), nil)
+	// Mock ConsumeBatch to return empty messages (simulating empty queue)
+	mockStream.On("ConsumeBatch", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string"), 20).
+		Return([]domain.StreamMessage{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -235,7 +141,7 @@ func TestLocationEnrichmentWorker_ContextCancellation(t *testing.T) {
 	}()
 
 	// Give it time to start
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Cancel context
 	cancel()
@@ -252,11 +158,136 @@ func TestLocationEnrichmentWorker_ContextCancellation(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-// Helper functions
-func ptrInt64(v int64) *int64 {
-	return &v
+// TestLocationEnrichmentWorker_BatchProcessing tests batch message processing
+func TestLocationEnrichmentWorker_BatchProcessing(t *testing.T) {
+	mockStream := &MockStreamRepository{}
+	mockUseCase := &MockEnrichedLocationUseCase{}
+	logger := zap.NewNop()
+
+	worker := location.NewLocationEnrichmentWorker(
+		mockStream,
+		mockUseCase,
+		"test-group",
+		3,
+		logger,
+	)
+
+	// Create test data
+	propertyID1 := uuid.New()
+	propertyID2 := uuid.New()
+	
+	city := "Barcelona"
+	lat1 := 41.3851
+	lon1 := 2.1734
+	lat2 := 41.3900
+	lon2 := 2.1800
+
+	event1 := &domain.LocationEnrichEvent{
+		PropertyID: propertyID1,
+		Country:    "Spain",
+		City:       &city,
+		Latitude:   &lat1,
+		Longitude:  &lon1,
+	}
+
+	event2 := &domain.LocationEnrichEvent{
+		PropertyID: propertyID2,
+		Country:    "Spain",
+		City:       &city,
+		Latitude:   &lat2,
+		Longitude:  &lon2,
+	}
+
+	// Marshal events
+	eventJSON1, _ := json.Marshal(event1)
+	eventJSON2, _ := json.Marshal(event2)
+
+	messages := []domain.StreamMessage{
+		{
+			ID:     "1234567890-0",
+			Stream: domain.StreamLocationEnrich,
+			Data: map[string]interface{}{
+				"data": string(eventJSON1),
+			},
+		},
+		{
+			ID:     "1234567890-1",
+			Stream: domain.StreamLocationEnrich,
+			Data: map[string]interface{}{
+				"data": string(eventJSON2),
+			},
+		},
+	}
+
+	// Mock CreateConsumerGroup
+	mockStream.On("CreateConsumerGroup", mock.Anything, domain.StreamLocationEnrich, "test-group").
+		Return(nil)
+
+	// Mock ConsumeBatch - first call returns messages, second call returns empty (to simulate stop)
+	mockStream.On("ConsumeBatch", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string"), 20).
+		Return(messages, nil).Once()
+	mockStream.On("ConsumeBatch", mock.Anything, domain.StreamLocationEnrich, "test-group", mock.AnythingOfType("string"), 20).
+		Return([]domain.StreamMessage{}, nil)
+
+	// Mock EnrichLocationBatch
+	mockUseCase.On("EnrichLocationBatch", mock.Anything, mock.MatchedBy(func(req dto.EnrichLocationBatchRequest) bool {
+		return len(req.Locations) == 2
+	})).Return(&dto.EnrichLocationBatchResponse{
+		Results: []dto.EnrichedLocationResult{
+			{
+				Index: 0,
+				EnrichedLocation: &dto.EnrichedLocationDTO{
+					IsAddressVisible: ptrBool(true),
+				},
+				Error: "",
+			},
+			{
+				Index: 1,
+				EnrichedLocation: &dto.EnrichedLocationDTO{
+					IsAddressVisible: ptrBool(true),
+				},
+				Error: "",
+			},
+		},
+		Meta: dto.EnrichLocationBatchMeta{
+			TotalLocations: 2,
+			SuccessCount:   2,
+			ErrorCount:     0,
+		},
+	}, nil)
+
+	// Mock PublishToStream for both results
+	mockStream.On("PublishToStream", mock.Anything, domain.StreamLocationDone, mock.MatchedBy(func(event *domain.LocationDoneEvent) bool {
+		return event.PropertyID == propertyID1 || event.PropertyID == propertyID2
+	})).Return(nil).Twice()
+
+	// Mock AckMessages
+	mockStream.On("AckMessages", mock.Anything, domain.StreamLocationEnrich, "test-group", []string{"1234567890-0", "1234567890-1"}).
+		Return(nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	// Start worker in goroutine
+	done := make(chan error, 1)
+	go func() {
+		done <- worker.Start(ctx)
+	}()
+
+	// Wait for timeout or completion
+	select {
+	case <-done:
+		// Worker stopped
+	case <-time.After(1 * time.Second):
+		t.Fatal("Worker did not stop in time")
+	}
+
+	// Verify expectations
+	mockStream.AssertExpectations(t)
+	mockUseCase.AssertExpectations(t)
 }
 
+// Helper functions
 func ptrBool(v bool) *bool {
 	return &v
 }

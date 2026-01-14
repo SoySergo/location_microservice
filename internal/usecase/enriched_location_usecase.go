@@ -313,3 +313,6 @@ func convertToNearestStations(stations []dto.PriorityTransportStation) []domain.
 
 // Compile-time check that EnrichedLocationUseCase implements LocationEnricher
 var _ LocationEnricher = (*EnrichedLocationUseCase)(nil)
+
+// Compile-time check that EnrichedLocationUseCase implements BatchLocationEnricher
+var _ BatchLocationEnricher = (*EnrichedLocationUseCase)(nil)
