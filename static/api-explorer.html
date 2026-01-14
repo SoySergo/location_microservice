@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Explorer - Location Microservice</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            display: flex;
+            height: 100vh;
+            background: #0f0f23;
+            color: #eee;
+        }
+
+        /* Left Sidebar - Results */
+        #left-sidebar {
+            width: 380px;
+            background: #1a1a2e;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #333;
+        }
+
+        #left-sidebar h2 {
+            padding: 16px;
+            font-size: 1.1rem;
+            color: #00d4ff;
+            border-bottom: 1px solid #333;
+            background: #16213e;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        #results-container {
+            flex: 1;
+            padding: 12px;
+            overflow-y: auto;
+        }
+
+        /* Map Container */
+        #map-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Top Panel - Actions */
+        #top-panel {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(26, 26, 46, 0.95);
+            padding: 10px 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        #top-panel .point-count {
+            color: #00d4ff;
+            font-weight: 600;
+            min-width: 100px;
+        }
+
+        #top-panel button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        #top-panel button.primary {
+            background: #00d4ff;
+            color: #000;
+        }
+
+        #top-panel button.primary:hover {
+            background: #00b8e6;
+        }
+
+        #top-panel button.primary:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        #top-panel button.secondary {
+            background: #333;
+            color: #fff;
+        }
+
+        #top-panel button.secondary:hover {
+            background: #444;
+        }
+
+        /* Right Sidebar - Methods */
+        #right-sidebar {
+            width: 320px;
+            background: #1a1a2e;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #333;
+        }
+
+        #right-sidebar h2 {
+            padding: 16px;
+            font-size: 1.1rem;
+            color: #00d4ff;
+            border-bottom: 1px solid #333;
+            background: #16213e;
+        }
+
+        .method-list {
+            padding: 12px;
+        }
+
+        .method-card {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .method-card:hover {
+            background: #1a2744;
+        }
+
+        .method-card.active {
+            border-color: #00d4ff;
+            background: #1a2744;
+        }
+
+        .method-card h3 {
+            font-size: 0.95rem;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        .method-card p {
+            font-size: 0.8rem;
+            color: #888;
+            line-height: 1.4;
+        }
+
+        .method-card .method-type {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            text-transform: uppercase;
+        }
+
+        .method-card .method-type.single {
+            background: #2d4a22;
+            color: #8bc34a;
+        }
+
+        .method-card .method-type.batch {
+            background: #4a3a22;
+            color: #ff9800;
+        }
+
+        /* Parameters Panel */
+        .params-section {
+            padding: 12px;
+            border-top: 1px solid #333;
+        }
+
+        .params-section h4 {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .param-group {
+            margin-bottom: 12px;
+        }
+
+        .param-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-bottom: 4px;
+        }
+
+        .param-group input,
+        .param-group select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #0f0f23;
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        .param-group input:focus,
+        .param-group select:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        /* Result Cards */
+        .result-point {
+            background: #16213e;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .result-point-header {
+            padding: 10px 14px;
+            background: #1a2744;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .result-point-header h4 {
+            font-size: 0.9rem;
+            color: #00d4ff;
+        }
+
+        .result-point-header .coords {
+            font-size: 0.75rem;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .result-point-content {
+            padding: 10px 14px;
+        }
+
+        .station-item {
+            background: #0f0f23;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-left: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .station-item:hover {
+            background: #1a1a3e;
+        }
+
+        .station-item.metro {
+            border-left-color: #d32f2f;
+        }
+
+        .station-item.train {
+            border-left-color: #0288d1;
+        }
+
+        .station-item.tram {
+            border-left-color: #f57c00;
+        }
+
+        .station-item.bus {
+            border-left-color: #388e3c;
+        }
+
+        .station-item.ferry {
+            border-left-color: #7b1fa2;
+        }
+
+        .station-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .station-type {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .station-type.metro {
+            background: rgba(211, 47, 47, 0.2);
+            color: #d32f2f;
+        }
+
+        .station-type.train {
+            background: rgba(2, 136, 209, 0.2);
+            color: #0288d1;
+        }
+
+        .station-type.tram {
+            background: rgba(245, 124, 0, 0.2);
+            color: #f57c00;
+        }
+
+        .station-type.bus {
+            background: rgba(56, 142, 60, 0.2);
+            color: #388e3c;
+        }
+
+        .station-distances {
+            font-size: 0.8rem;
+            color: #888;
+            margin: 6px 0;
+        }
+
+        .station-distances span {
+            margin-right: 12px;
+        }
+
+        .station-lines {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .line-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+            background: #333;
+        }
+
+        .line-badge .line-ref {
+            margin-right: 4px;
+            padding-right: 4px;
+            border-right: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* Meta info */
+        .meta-info {
+            background: #0f0f23;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 12px;
+        }
+
+        .meta-info span {
+            margin-right: 16px;
+        }
+
+        .meta-info .highlight {
+            color: #00d4ff;
+        }
+
+        /* Loading & No Results */
+        .loading,
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .loading::after {
+            content: '';
+            display: block;
+            width: 30px;
+            height: 30px;
+            margin: 16px auto;
+            border: 3px solid #333;
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Map Markers */
+        .search-marker {
+            width: 24px;
+            height: 24px;
+            background: #00d4ff;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .search-marker.batch {
+            width: 20px;
+            height: 20px;
+            background: #ff9800;
+        }
+
+        .station-marker {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .station-marker.metro {
+            background: #d32f2f;
+        }
+
+        .station-marker.train {
+            background: #0288d1;
+        }
+
+        .station-marker.tram {
+            background: #f57c00;
+        }
+
+        .station-marker.bus {
+            background: #388e3c;
+        }
+
+        /* Mapbox popup */
+        .mapboxgl-popup-content {
+            background: #1a1a2e;
+            color: #fff;
+            padding: 14px;
+            border-radius: 8px;
+            min-width: 220px;
+        }
+
+        .mapboxgl-popup-close-button {
+            color: #fff;
+            font-size: 18px;
+        }
+
+        .popup-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #00d4ff;
+        }
+
+        .popup-type {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            opacity: 0.7;
+        }
+
+        .popup-distance {
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+            color: #aaa;
+        }
+
+        .popup-lines {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        /* Instructions */
+        .instructions {
+            background: #0f0f23;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #888;
+            line-height: 1.5;
+            margin: 12px;
+        }
+
+        .instructions strong {
+            color: #00d4ff;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Left Sidebar - Results -->
+    <div id="left-sidebar">
+        <h2>📊 Результаты</h2>
+        <div id="results-container">
+            <div class="instructions">
+                <strong>Начало работы:</strong><br>
+                1. Выберите метод справа<br>
+                2. Кликните на карту для выбора точки(ек)<br>
+                3. Нажмите "Выполнить" для запроса<br>
+                4. Результаты появятся здесь
+            </div>
+        </div>
+    </div>
+
+    <!-- Map Container -->
+    <div id="map-container">
+        <div id="top-panel">
+            <span class="point-count">Точек: <span id="points-count">0</span></span>
+            <button id="execute-btn" class="primary" disabled>Выполнить</button>
+            <button id="clear-btn" class="secondary">Очистить</button>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <!-- Right Sidebar - Methods -->
+    <div id="right-sidebar">
+        <h2>🔧 Методы API</h2>
+
+        <div class="method-list">
+            <!-- Priority Transport Single -->
+            <div class="method-card active" data-method="priority-single">
+                <h3>🚇 Priority Transport</h3>
+                <p>Ближайший транспорт с приоритетом. Metro/Train → Bus/Tram</p>
+                <span class="method-type single">Single</span>
+            </div>
+
+            <!-- Priority Transport Batch -->
+            <div class="method-card" data-method="priority-batch">
+                <h3>🚇 Priority Transport Batch</h3>
+                <p>Batch версия - несколько точек одним запросом</p>
+                <span class="method-type batch">Batch</span>
+            </div>
+
+            <!-- Enrichment Transport -->
+            <div class="method-card" data-method="enrichment-single">
+                <h3>🚉 Enrichment Transport</h3>
+                <p>Транспорт с фильтром по типам и расширенной информацией</p>
+                <span class="method-type single">Single</span>
+            </div>
+
+            <!-- Enrichment Transport Batch -->
+            <div class="method-card" data-method="enrichment-batch">
+                <h3>🚉 Enrichment Batch</h3>
+                <p>Batch версия enrichment транспорта</p>
+                <span class="method-type batch">Batch</span>
+            </div>
+        </div>
+
+        <div class="params-section">
+            <h4>Параметры</h4>
+            <div class="param-group">
+                <label>Радиус (м)</label>
+                <input type="number" id="param-radius" value="1500" min="100" max="10000" step="100">
+            </div>
+            <div class="param-group">
+                <label>Лимит на точку</label>
+                <input type="number" id="param-limit" value="5" min="1" max="20">
+            </div>
+            <div class="param-group" id="types-group">
+                <label>Типы транспорта</label>
+                <select id="param-types" multiple size="4">
+                    <option value="metro" selected>Metro</option>
+                    <option value="train" selected>Train</option>
+                    <option value="tram">Tram</option>
+                    <option value="bus">Bus</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== Configuration ==========
+        const API_BASE = '/api/v1';
+
+        // ========== State ==========
+        let map = null;
+        let currentMethod = 'priority-single';
+        let searchPoints = [];
+        let searchMarkers = [];
+        let stationMarkers = [];
+        let activePopup = null;
+        let results = null;
+
+        // ========== Methods Configuration ==========
+        const METHODS = {
+            'priority-single': {
+                name: 'Priority Transport',
+                endpoint: '/debug/transport/priority',
+                httpMethod: 'GET',
+                isBatch: false,
+                showTypes: false
+            },
+            'priority-batch': {
+                name: 'Priority Transport Batch',
+                endpoint: '/debug/transport/priority/batch',
+                httpMethod: 'POST',
+                isBatch: true,
+                showTypes: false
+            },
+            'enrichment-single': {
+                name: 'Enrichment Transport',
+                endpoint: '/debug/enrichment/transport',
+                httpMethod: 'GET',
+                isBatch: false,
+                showTypes: true
+            },
+            'enrichment-batch': {
+                name: 'Enrichment Transport Batch',
+                endpoint: '/debug/enrichment/transport/batch',
+                httpMethod: 'POST',
+                isBatch: true,
+                showTypes: true
+            }
+        };
+
+        // ========== DOM Elements ==========
+        const resultsContainer = document.getElementById('results-container');
+        const pointsCountSpan = document.getElementById('points-count');
+        const executeBtn = document.getElementById('execute-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const typesGroup = document.getElementById('types-group');
+
+        // ========== Initialize App ==========
+        async function initApp() {
+            try {
+                // Load Mapbox token
+                const configResponse = await fetch(`${API_BASE}/debug/config/mapbox`);
+                const config = await configResponse.json();
+
+                if (!config.token) {
+                    throw new Error('Mapbox token not configured');
+                }
+
+                mapboxgl.accessToken = config.token;
+
+                // Initialize map
+                map = new mapboxgl.Map({
+                    container: 'map',
+                    style: 'mapbox://styles/serhii11/cmhuvoz2c001o01sfgppw7m5n',
+                    center: [2.1734, 41.3851], // Barcelona
+                    zoom: 13
+                });
+
+                map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+                // Map click handler
+                map.on('click', handleMapClick);
+
+                map.on('load', () => {
+                    // Add radius circle layer
+                    map.addSource('radius-circles', {
+                        type: 'geojson',
+                        data: { type: 'FeatureCollection', features: [] }
+                    });
+
+                    map.addLayer({
+                        id: 'radius-circles-fill',
+                        type: 'fill',
+                        source: 'radius-circles',
+                        paint: {
+                            'fill-color': '#00d4ff',
+                            'fill-opacity': 0.1
+                        }
+                    });
+
+                    map.addLayer({
+                        id: 'radius-circles-stroke',
+                        type: 'line',
+                        source: 'radius-circles',
+                        paint: {
+                            'line-color': '#00d4ff',
+                            'line-width': 2,
+                            'line-opacity': 0.5
+                        }
+                    });
+                });
+
+                // Setup event listeners
+                setupEventListeners();
+
+            } catch (error) {
+                console.error('Failed to initialize:', error);
+                resultsContainer.innerHTML = `
+                    <div class="no-results" style="color: #ff6b6b;">
+                        Ошибка инициализации: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // ========== Event Listeners ==========
+        function setupEventListeners() {
+            // Method selection
+            document.querySelectorAll('.method-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    document.querySelectorAll('.method-card').forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+                    currentMethod = card.dataset.method;
+                    updateUI();
+                });
+            });
+
+            // Execute button
+            executeBtn.addEventListener('click', executeRequest);
+
+            // Clear button
+            clearBtn.addEventListener('click', clearAll);
+
+            // Radius change - update circles
+            document.getElementById('param-radius').addEventListener('input', updateRadiusCircles);
+        }
+
+        // ========== UI Updates ==========
+        function updateUI() {
+            const method = METHODS[currentMethod];
+
+            // Show/hide types selector
+            typesGroup.style.display = method.showTypes ? 'block' : 'none';
+
+            // Update execute button state
+            const minPoints = method.isBatch ? 1 : 1;
+            executeBtn.disabled = searchPoints.length < minPoints;
+
+            // Update points count
+            pointsCountSpan.textContent = searchPoints.length;
+        }
+
+        // ========== Map Handlers ==========
+        function handleMapClick(e) {
+            const method = METHODS[currentMethod];
+            const { lng, lat } = e.lngLat;
+
+            // For single methods, replace existing point
+            if (!method.isBatch) {
+                clearSearchPoints();
+            }
+
+            // Add new point
+            addSearchPoint(lat, lng);
+            updateUI();
+        }
+
+        function addSearchPoint(lat, lng) {
+            const method = METHODS[currentMethod];
+
+            // Create marker
+            const el = document.createElement('div');
+            el.className = `search-marker${method.isBatch ? ' batch' : ''}`;
+
+            const marker = new mapboxgl.Marker(el)
+                .setLngLat([lng, lat])
+                .addTo(map);
+
+            searchPoints.push({ lat, lng });
+            searchMarkers.push(marker);
+
+            updateRadiusCircles();
+        }
+
+        function clearSearchPoints() {
+            searchMarkers.forEach(m => m.remove());
+            searchMarkers = [];
+            searchPoints = [];
+            updateRadiusCircles();
+        }
+
+        function clearStationMarkers() {
+            stationMarkers.forEach(m => m.remove());
+            stationMarkers = [];
+            if (activePopup) {
+                activePopup.remove();
+                activePopup = null;
+            }
+        }
+
+        function clearAll() {
+            clearSearchPoints();
+            clearStationMarkers();
+            results = null;
+            resultsContainer.innerHTML = `
+                <div class="instructions">
+                    <strong>Начало работы:</strong><br>
+                    1. Выберите метод справа<br>
+                    2. Кликните на карту для выбора точки(ек)<br>
+                    3. Нажмите "Выполнить" для запроса<br>
+                    4. Результаты появятся здесь
+                </div>
+            `;
+            updateUI();
+        }
+
+        function updateRadiusCircles() {
+            const radiusM = parseFloat(document.getElementById('param-radius').value) || 1500;
+
+            // Create GeoJSON circles for each point
+            const features = searchPoints.map((point, idx) => {
+                return turf.circle([point.lng, point.lat], radiusM / 1000, {
+                    steps: 64,
+                    units: 'kilometers',
+                    properties: { index: idx }
+                });
+            });
+
+            const source = map.getSource('radius-circles');
+            if (source) {
+                source.setData({
+                    type: 'FeatureCollection',
+                    features: features
+                });
+            }
+        }
+
+        // Simple turf.circle implementation
+        const turf = {
+            circle: function (center, radius, options) {
+                const steps = options.steps || 64;
+                const coords = [];
+                for (let i = 0; i < steps; i++) {
+                    const angle = (i / steps) * 360;
+                    const point = this.destination(center, radius, angle);
+                    coords.push(point);
+                }
+                coords.push(coords[0]); // Close the ring
+                return {
+                    type: 'Feature',
+                    properties: options.properties || {},
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [coords]
+                    }
+                };
+            },
+            destination: function (origin, distance, bearing) {
+                const R = 6371; // Earth radius in km
+                const d = distance / R;
+                const brng = bearing * Math.PI / 180;
+                const lat1 = origin[1] * Math.PI / 180;
+                const lon1 = origin[0] * Math.PI / 180;
+
+                const lat2 = Math.asin(
+                    Math.sin(lat1) * Math.cos(d) +
+                    Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
+                );
+                const lon2 = lon1 + Math.atan2(
+                    Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+                    Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+                );
+
+                return [lon2 * 180 / Math.PI, lat2 * 180 / Math.PI];
+            }
+        };
+
+        // ========== API Requests ==========
+        async function executeRequest() {
+            const method = METHODS[currentMethod];
+
+            if (searchPoints.length === 0) return;
+
+            resultsContainer.innerHTML = '<div class="loading">Загрузка...</div>';
+            clearStationMarkers();
+
+            try {
+                let response;
+                const radius = parseFloat(document.getElementById('param-radius').value) || 1500;
+                const limit = parseInt(document.getElementById('param-limit').value) || 5;
+
+                if (currentMethod === 'priority-single') {
+                    const point = searchPoints[0];
+                    const url = `${API_BASE}${method.endpoint}?lat=${point.lat}&lon=${point.lng}&radius=${radius}&limit=${limit}`;
+                    response = await fetch(url);
+                }
+                else if (currentMethod === 'priority-batch') {
+                    const body = {
+                        points: searchPoints.map(p => ({ lat: p.lat, lon: p.lng })),
+                        radius: radius,
+                        limit: limit
+                    };
+                    response = await fetch(`${API_BASE}${method.endpoint}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                }
+                else if (currentMethod === 'enrichment-single') {
+                    const point = searchPoints[0];
+                    const types = getSelectedTypes();
+                    const typesParam = types.length > 0 ? `&types=${types.join(',')}` : '';
+                    const url = `${API_BASE}${method.endpoint}?lat=${point.lat}&lon=${point.lng}&max_distance=${radius}&limit=${limit}${typesParam}`;
+                    response = await fetch(url);
+                }
+                else if (currentMethod === 'enrichment-batch') {
+                    const types = getSelectedTypes();
+                    const body = {
+                        points: searchPoints.map(p => ({
+                            lat: p.lat,
+                            lon: p.lng,
+                            types: types.length > 0 ? types : ['metro'],
+                            limit: limit
+                        })),
+                        max_distance: radius
+                    };
+                    response = await fetch(`${API_BASE}${method.endpoint}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                }
+
+                const result = await response.json();
+                console.log('API Response:', result);
+
+                // Handle response
+                if (result.success === false) {
+                    throw new Error(result.error?.message || 'Unknown error');
+                }
+
+                results = result.data || result;
+                renderResults();
+
+            } catch (error) {
+                console.error('Request failed:', error);
+                resultsContainer.innerHTML = `
+                    <div class="no-results" style="color: #ff6b6b;">
+                        Ошибка: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function getSelectedTypes() {
+            const select = document.getElementById('param-types');
+            return Array.from(select.selectedOptions).map(o => o.value);
+        }
+
+        // ========== Render Results ==========
+        function renderResults() {
+            const method = METHODS[currentMethod];
+
+            if (!results) {
+                resultsContainer.innerHTML = '<div class="no-results">Нет результатов</div>';
+                return;
+            }
+
+            let html = '';
+
+            // Render based on method type
+            if (method.isBatch) {
+                html = renderBatchResults();
+            } else {
+                html = renderSingleResults();
+            }
+
+            resultsContainer.innerHTML = html;
+
+            // Add click handlers to station items
+            document.querySelectorAll('.station-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const lat = parseFloat(item.dataset.lat);
+                    const lon = parseFloat(item.dataset.lon);
+                    map.flyTo({ center: [lon, lat], zoom: 16, duration: 1000 });
+                });
+            });
+        }
+
+        function renderSingleResults() {
+            const stations = results.stations || results.transport || [];
+            const meta = results.meta || {};
+
+            let html = `
+                <div class="meta-info">
+                    <span>Найдено: <strong class="highlight">${meta.total_found || stations.length}</strong></span>
+                    <span>Радиус: ${meta.radius_m || '-'}м</span>
+                    ${meta.priority_type ? `<span>Тип: <strong class="highlight">${meta.priority_type}</strong></span>` : ''}
+                </div>
+            `;
+
+            if (stations.length === 0) {
+                html += '<div class="no-results">Станции не найдены в указанном радиусе</div>';
+                return html;
+            }
+
+            html += '<div class="result-point">';
+            html += '<div class="result-point-content">';
+
+            stations.forEach((station, idx) => {
+                html += renderStationCard(station, idx);
+                addStationMarker(station);
+            });
+
+            html += '</div></div>';
+            return html;
+        }
+
+        function renderBatchResults() {
+            const batchResults = results.results || [];
+            const meta = results.meta || {};
+
+            let html = `
+                <div class="meta-info">
+                    <span>Точек: <strong class="highlight">${meta.total_points || batchResults.length}</strong></span>
+                    <span>Станций: <strong class="highlight">${meta.total_stations || '-'}</strong></span>
+                    <span>Радиус: ${meta.radius_m || '-'}м</span>
+                </div>
+            `;
+
+            if (batchResults.length === 0) {
+                html += '<div class="no-results">Нет результатов</div>';
+                return html;
+            }
+
+            batchResults.forEach((pointResult, pointIdx) => {
+                const searchPoint = pointResult.search_point || {};
+                const stations = pointResult.stations || [];
+
+                html += `
+                    <div class="result-point">
+                        <div class="result-point-header">
+                            <h4>Точка ${pointIdx + 1}</h4>
+                            <span class="coords">${searchPoint.lat?.toFixed(5)}, ${searchPoint.lon?.toFixed(5)}</span>
+                        </div>
+                        <div class="result-point-content">
+                `;
+
+                if (stations.length === 0) {
+                    html += '<div class="no-results" style="padding: 10px;">Станции не найдены</div>';
+                } else {
+                    stations.forEach((station, stationIdx) => {
+                        html += renderStationCard(station, `${pointIdx}-${stationIdx}`);
+                        addStationMarker(station);
+                    });
+                }
+
+                html += '</div></div>';
+            });
+
+            return html;
+        }
+
+        function renderStationCard(station, idx) {
+            const type = station.type || 'station';
+            const linearDist = station.linear_distance || station.distance || 0;
+            const walkingDist = station.walking_distance || linearDist * 1.2;
+            const walkingTime = station.walking_time || (walkingDist / 83.3); // ~5 km/h
+
+            let linesHtml = '';
+            if (station.lines && station.lines.length > 0) {
+                linesHtml = '<div class="station-lines">';
+                station.lines.forEach(line => {
+                    const bgColor = line.color || getTypeColor(type);
+                    const displayName = line.ref || line.name || line.type;
+                    linesHtml += `
+                        <span class="line-badge" style="background: ${bgColor}">
+                            ${line.ref ? `<span class="line-ref">${line.ref}</span>` : ''}
+                            ${line.name && line.name !== line.ref ? line.name : (line.type || '')}
+                        </span>
+                    `;
+                });
+                linesHtml += '</div>';
+            }
+
+            return `
+                <div class="station-item ${type}" data-idx="${idx}" data-lat="${station.lat}" data-lon="${station.lon}">
+                    <div class="station-name">${station.name}</div>
+                    <span class="station-type ${type}">${type}</span>
+                    <div class="station-distances">
+                        <span>📏 ${linearDist.toFixed(0)}м</span>
+                        <span>🚶 ${walkingDist.toFixed(0)}м</span>
+                        <span>⏱️ ${walkingTime.toFixed(1)} мин</span>
+                    </div>
+                    ${linesHtml}
+                </div>
+            `;
+        }
+
+        function addStationMarker(station) {
+            const el = document.createElement('div');
+            el.className = `station-marker ${station.type || 'station'}`;
+
+            const marker = new mapboxgl.Marker(el)
+                .setLngLat([station.lon, station.lat])
+                .addTo(map);
+
+            // Click event for popup
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showStationPopup(station);
+            });
+
+            stationMarkers.push(marker);
+        }
+
+        function showStationPopup(station) {
+            if (activePopup) {
+                activePopup.remove();
+            }
+
+            let linesHtml = '';
+            if (station.lines && station.lines.length > 0) {
+                linesHtml = '<div class="popup-lines">';
+                station.lines.forEach(line => {
+                    const bgColor = line.color || getTypeColor(station.type);
+                    linesHtml += `
+                        <span class="line-badge" style="background: ${bgColor}">
+                            ${line.ref || line.name}
+                        </span>
+                    `;
+                });
+                linesHtml += '</div>';
+            }
+
+            const linearDist = station.linear_distance || station.distance || 0;
+            const walkingDist = station.walking_distance || linearDist * 1.2;
+            const walkingTime = station.walking_time || (walkingDist / 83.3);
+
+            activePopup = new mapboxgl.Popup({ closeOnClick: false })
+                .setLngLat([station.lon, station.lat])
+                .setHTML(`
+                    <div class="popup-title">${station.name}</div>
+                    <div class="popup-type">${station.type}</div>
+                    <div class="popup-distance">
+                        📏 ${linearDist.toFixed(0)}м · 
+                        🚶 ${walkingDist.toFixed(0)}м · 
+                        ⏱️ ${walkingTime.toFixed(1)} мин
+                    </div>
+                    ${linesHtml}
+                `)
+                .addTo(map);
+        }
+
+        function getTypeColor(type) {
+            const colors = {
+                metro: '#d32f2f',
+                train: '#0288d1',
+                tram: '#f57c00',
+                bus: '#388e3c',
+                ferry: '#7b1fa2'
+            };
+            return colors[type] || '#666';
+        }
+
+        // ========== Initialize ==========
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+
+</html>

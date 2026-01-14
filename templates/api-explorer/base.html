@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - Location Microservice</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+    {{template "styles" .}}
+</head>
+
+<body>
+    <!-- Left Sidebar - Results -->
+    <div id="left-sidebar">
+        {{template "left-sidebar-header" .}}
+        <div id="results-container">
+            {{template "results-placeholder" .}}
+        </div>
+    </div>
+
+    <!-- Map Container -->
+    <div id="map-container">
+        {{template "top-panel" .}}
+        <div id="map"></div>
+    </div>
+
+    <!-- Right Sidebar - Methods -->
+    <div id="right-sidebar">
+        <h2>🔧 Методы API</h2>
+        <div class="method-list">
+            {{template "method-cards" .}}
+        </div>
+        {{template "params-section" .}}
+    </div>
+
+    {{template "scripts" .}}
+</body>
+
+</html>

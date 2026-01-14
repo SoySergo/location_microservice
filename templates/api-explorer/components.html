@@ -1,0 +1,67 @@
+{{define "left-sidebar-header"}}
+<div class="sidebar-header">
+    <h2>📊 Результаты</h2>
+    <div class="view-toggle">
+        <button id="btn-view-ui" class="active" onclick="switchView('ui')">UI</button>
+        <button id="btn-view-json" onclick="switchView('json')">JSON</button>
+    </div>
+</div>
+{{end}}
+
+{{define "results-placeholder"}}
+<div id="ui-results" class="ui-view">
+    <div class="instructions">
+        <strong>Начало работы:</strong><br>
+        1. Выберите метод справа<br>
+        2. Кликните на карту для выбора точки(ек)<br>
+        3. Нажмите "Выполнить" для запроса<br>
+        4. Результаты появятся здесь
+    </div>
+</div>
+<div id="json-results" class="json-view">
+    <div class="instructions">
+        Выполните запрос, чтобы увидеть JSON ответ
+    </div>
+</div>
+{{end}}
+
+{{define "top-panel"}}
+<div id="top-panel">
+    <span class="point-count">Точек: <span id="points-count">0</span></span>
+    <button id="execute-btn" class="primary" disabled>Выполнить</button>
+    <button id="clear-btn" class="secondary">Очистить</button>
+</div>
+{{end}}
+
+{{define "method-cards"}}
+{{range .Methods}}
+<div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+    <h3>{{.Icon}} {{.Name}}</h3>
+    <p>{{.Description}}</p>
+    <span class="method-type {{if .IsBatch}}batch{{else}}single{{end}}">{{if .IsBatch}}Batch{{else}}Single{{end}}</span>
+</div>
+{{end}}
+{{end}}
+
+{{define "params-section"}}
+<div class="params-section">
+    <h4>Параметры</h4>
+    <div class="param-group">
+        <label>Радиус (м)</label>
+        <input type="number" id="param-radius" value="1500" min="100" max="10000" step="100">
+    </div>
+    <div class="param-group">
+        <label>Лимит на точку</label>
+        <input type="number" id="param-limit" value="5" min="1" max="20">
+    </div>
+    <div class="param-group" id="types-group">
+        <label>Типы транспорта</label>
+        <select id="param-types" multiple size="4">
+            <option value="metro" selected>Metro</option>
+            <option value="train" selected>Train</option>
+            <option value="tram">Tram</option>
+            <option value="bus">Bus</option>
+        </select>
+    </div>
+</div>
+{{end}}

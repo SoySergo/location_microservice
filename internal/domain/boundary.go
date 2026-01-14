@@ -45,3 +45,18 @@ type LatLon struct {
 	Lat float64 `json:"lat"`
 	Lon float64 `json:"lon"`
 }
+
+// BoundarySearchRequest - запрос на поиск границы по тексту для батча
+type BoundarySearchRequest struct {
+	Index       int    // индекс запроса для маппинга результатов
+	Name        string // искомое название
+	AdminLevel  int    // уровень административной единицы (2, 4, 6, 8, 9, 10)
+	CountryHint string // опциональная подсказка страны для уточнения поиска
+}
+
+// BoundarySearchResult - результат поиска границы для батча
+type BoundarySearchResult struct {
+	Index    int            // индекс запроса
+	Boundary *AdminBoundary // найденная граница (nil если не найдена)
+	Found    bool           // флаг успешного поиска
+}

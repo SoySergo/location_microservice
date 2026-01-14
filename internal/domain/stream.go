@@ -22,6 +22,7 @@ type LocationEnrichEvent struct {
 	PostalCode   *string   `json:"postal_code,omitempty"`
 	Latitude     *float64  `json:"latitude,omitempty"`
 	Longitude    *float64  `json:"longitude,omitempty"`
+	IsVisible    *bool     `json:"is_visible,omitempty"`
 }
 
 // HasStreetAddress проверяет наличие полного адреса (улица + дом)
@@ -40,22 +41,62 @@ type LocationDoneEvent struct {
 
 // EnrichedLocation - обогащённые данные локации
 type EnrichedLocation struct {
-	CountryID        *int64 `json:"country_id,omitempty"`
-	RegionID         *int64 `json:"region_id,omitempty"`
-	ProvinceID       *int64 `json:"province_id,omitempty"`
-	CityID           *int64 `json:"city_id,omitempty"`
-	DistrictID       *int64 `json:"district_id,omitempty"`
-	NeighborhoodID   *int64 `json:"neighborhood_id,omitempty"`
-	IsAddressVisible *bool  `json:"is_address_visible,omitempty"`
+	Country          *BoundaryInfo `json:"country,omitempty"`
+	Region           *BoundaryInfo `json:"region,omitempty"`
+	Province         *BoundaryInfo `json:"province,omitempty"`
+	City             *BoundaryInfo `json:"city,omitempty"`
+	District         *BoundaryInfo `json:"district,omitempty"`
+	Neighborhood     *BoundaryInfo `json:"neighborhood,omitempty"`
+	IsAddressVisible *bool         `json:"is_address_visible,omitempty"`
+}
+
+// BoundaryInfo - информация о границе с переводами
+type BoundaryInfo struct {
+	ID             int64             `json:"id"`
+	Name           string            `json:"name"`
+	TranslateNames map[string]string `json:"translate_names,omitempty"`
 }
 
 // NearestStation - ближайшая станция транспорта
 type NearestStation struct {
-	StationID int64   `json:"station_id"`
-	Name      string  `json:"name"`
-	Type      string  `json:"type"`
-	Distance  float64 `json:"distance"`
-	LineIDs   []int64 `json:"line_ids"`
+	StationID       int64               `json:"station_id"`
+	Name            string              `json:"name"`
+	Type            string              `json:"type"`
+	Lat             float64             `json:"lat"`
+	Lon             float64             `json:"lon"`
+	Distance        float64             `json:"distance"`
+	WalkingDuration *float64            `json:"walking_duration,omitempty"`
+	WalkingDistance *float64            `json:"walking_distance,omitempty"`
+	Lines           []TransportLineInfo `json:"lines,omitempty"`
+}
+
+// TransportLineInfo - информация о линии транспорта
+type TransportLineInfo struct {
+	ID    int64   `json:"id"`
+	Name  string  `json:"name"`
+	Ref   string  `json:"ref,omitempty"`
+	Type  string  `json:"type,omitempty"`
+	Color *string `json:"color,omitempty"`
+}
+
+// NearestTransportWithLines - ближайшая станция транспорта с информацией о линиях
+// Используется для метода GetNearestTransportByPriority
+type NearestTransportWithLines struct {
+	StationID int64               `json:"station_id"`
+	Name      string              `json:"name"`
+	NameEn    *string             `json:"name_en,omitempty"`
+	Type      string              `json:"type"` // metro, train, tram, bus, ferry
+	Lat       float64             `json:"lat"`
+	Lon       float64             `json:"lon"`
+	Distance  float64             `json:"distance"` // метры
+	Lines     []TransportLineInfo `json:"lines,omitempty"`
+}
+
+// BatchTransportResult - результат batch-запроса транспорта для одной точки
+type BatchTransportResult struct {
+	PointIndex  int                         `json:"point_index"`
+	SearchPoint Coordinate                  `json:"search_point"`
+	Stations    []NearestTransportWithLines `json:"stations"`
 }
 
 // LocationDoneEventExtended - расширенный результат обогащения с инфраструктурой

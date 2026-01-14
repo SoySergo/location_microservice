@@ -35,7 +35,6 @@ import (
 	"github.com/location-microservice/internal/delivery/http/handler"
 	"github.com/location-microservice/internal/pkg/logger"
 	"github.com/location-microservice/internal/repository/cache"
-	"github.com/location-microservice/internal/repository/postgres"
 	"github.com/location-microservice/internal/repository/postgresosm"
 	"github.com/location-microservice/internal/usecase"
 	"go.uber.org/zap"
@@ -60,18 +59,6 @@ func main() {
 		zap.String("env", cfg.Server.Env),
 		zap.String("server_addr", cfg.GetServerAddr()),
 	)
-
-	// 3. Connect to PostgreSQL (main database)
-	db, err := postgres.New(&cfg.Database, log)
-	if err != nil {
-		log.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Error("Failed to close PostgreSQL connection", zap.Error(err))
-		}
-	}()
-	log.Info("PostgreSQL connected")
 
 	// 3b. Connect to OSM PostgreSQL (osm_db with planet_osm_* tables)
 	osmDB, err := postgresosm.New(&cfg.OSMDB, log)
@@ -101,10 +88,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := db.Health(ctx); err != nil {
-		log.Fatal("PostgreSQL health check failed", zap.Error(err))
-	}
-
 	if err := osmDB.Health(ctx); err != nil {
 		log.Fatal("OSM PostgreSQL health check failed", zap.Error(err))
 	}
@@ -123,7 +106,6 @@ func main() {
 	environmentRepo := postgresosm.NewEnvironmentRepository(osmDB)
 
 	// Postgres репозитории (основная база данных для статистики и других данных)
-	statsRepo := postgres.NewStatsRepository(db, log)
 	cacheRepo := cache.NewCacheRepository(redisClient)
 
 	log.Info("Repositories initialized")
@@ -164,9 +146,25 @@ func main() {
 		cfg.Tile.POIMaxFeatures,
 	)
 
+	// EnrichmentUseCase - для обогащения локаций
+	enrichmentUC := usecase.NewEnrichmentUseCase(
+		boundaryRepo,
+		transportRepo,
+		log,
+		[]string{"metro", "train", "tram", "bus"}, // типы транспорта по умолчанию
+		1500, // радиус поиска транспорта в метрах (1.5 км)
+	)
+
+	// TODO: statsRepo not implemented yet, using nil for now
 	statsUC := usecase.NewStatsUseCase(
-		statsRepo,
+		nil, // statsRepo
 		cacheRepo,
+		log,
+	)
+
+	enrichmentDebugUC := usecase.NewEnrichmentDebugUseCase(
+		transportRepo,
+		enrichmentUC,
 		log,
 	)
 
@@ -179,6 +177,7 @@ func main() {
 	tileHandler := handler.NewTileHandler(tileUC, log)
 	poiTileHandler := handler.NewPOITileHandler(poiTileUC, log)
 	statsHandler := handler.NewStatsHandler(statsUC, log)
+	enrichmentDebugHandler := handler.NewEnrichmentDebugHandler(enrichmentDebugUC, log)
 
 	log.Info("HTTP handlers initialized")
 
@@ -192,6 +191,7 @@ func main() {
 		tileHandler,
 		poiTileHandler,
 		statsHandler,
+		enrichmentDebugHandler,
 	)
 
 	log.Info("HTTP server initialized")
@@ -221,11 +221,6 @@ func main() {
 	// Shutdown HTTP server
 	if err := server.Shutdown(ctx); err != nil {
 		log.Error("Server shutdown error", zap.Error(err))
-	}
-
-	// Close database connections
-	if err := db.Close(); err != nil {
-		log.Error("Failed to close database", zap.Error(err))
 	}
 
 	// Close OSM database connection

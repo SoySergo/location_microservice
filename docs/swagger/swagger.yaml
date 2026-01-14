@@ -108,6 +108,297 @@ definitions:
           $ref: '#/definitions/github_com_location-microservice_internal_domain.Address'
         type: array
     type: object
+  github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      translate_names:
+        additionalProperties:
+          type: string
+        type: object
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichedLocationDTO:
+    properties:
+      city:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO'
+      country:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO'
+      district:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO'
+      is_address_visible:
+        type: boolean
+      neighborhood:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO'
+      province:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO'
+      region:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.BoundaryInfoDTO'
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichedTransportStation:
+    properties:
+      lat:
+        type: number
+      linear_distance:
+        description: метры (прямая линия)
+        type: number
+      lines:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportLineInfoEnriched'
+        type: array
+      lon:
+        type: number
+      name:
+        type: string
+      station_id:
+        type: integer
+      type:
+        type: string
+      walking_distance:
+        description: метры (примерное пешком)
+        type: number
+      walking_time:
+        description: минуты
+        type: number
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugBatchMeta:
+    properties:
+      radius_m:
+        type: number
+      total_points:
+        type: integer
+      total_stations:
+        type: integer
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationBatchRequest:
+    properties:
+      locations:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.LocationInput'
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - locations
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationBatchResponse:
+    properties:
+      meta:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.LocationBatchMeta'
+      results:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.LocationEnrichmentResult'
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationRequest:
+    properties:
+      city:
+        type: string
+      country:
+        minLength: 2
+        type: string
+      district:
+        type: string
+      house_number:
+        type: string
+      latitude:
+        maximum: 90
+        minimum: -90
+        type: number
+      longitude:
+        maximum: 180
+        minimum: -180
+        type: number
+      neighborhood:
+        type: string
+      postal_code:
+        type: string
+      province:
+        type: string
+      region:
+        type: string
+      street:
+        type: string
+    required:
+    - country
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationResponse:
+    properties:
+      enriched_location:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichedLocationDTO'
+      error:
+        type: string
+      nearest_transport:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.NearestStationDTO'
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugMeta:
+    properties:
+      radius_m:
+        type: number
+      search_point:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.Point'
+      total_found:
+        type: integer
+      types:
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportBatchRequest:
+    properties:
+      max_distance:
+        description: метры
+        maximum: 10000
+        minimum: 100
+        type: number
+      points:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportSearchPointDTO'
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - points
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportBatchResponse:
+    properties:
+      meta:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugBatchMeta'
+      results:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.PointTransportResult'
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportRequest:
+    properties:
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      limit:
+        maximum: 50
+        minimum: 1
+        type: integer
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+      max_distance:
+        description: метры
+        maximum: 10000
+        minimum: 100
+        type: number
+      types:
+        items:
+          type: string
+        type: array
+    required:
+    - lat
+    - lon
+    type: object
+  github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportResponse:
+    properties:
+      meta:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugMeta'
+      transport:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichedTransportStation'
+        type: array
+    type: object
+  github_com_location-microservice_internal_usecase_dto.LocationBatchMeta:
+    properties:
+      db_queries_count:
+        description: количество запросов в БД
+        type: integer
+      error_count:
+        type: integer
+      name_resolve_count:
+        description: обработано по названиям
+        type: integer
+      success_count:
+        type: integer
+      total_locations:
+        type: integer
+      visible_count:
+        description: обработано по координатам
+        type: integer
+    type: object
+  github_com_location-microservice_internal_usecase_dto.LocationEnrichmentResult:
+    properties:
+      enriched_location:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichedLocationDTO'
+      error:
+        type: string
+      index:
+        type: integer
+    type: object
+  github_com_location-microservice_internal_usecase_dto.LocationInput:
+    properties:
+      city:
+        description: город
+        type: string
+      country:
+        description: страна (обязательно)
+        minLength: 2
+        type: string
+      district:
+        description: район
+        type: string
+      house_number:
+        description: номер дома
+        type: string
+      index:
+        description: индекс для маппинга результатов
+        type: integer
+      is_visible:
+        description: флаг видимости адреса
+        type: boolean
+      latitude:
+        maximum: 90
+        minimum: -90
+        type: number
+      longitude:
+        maximum: 180
+        minimum: -180
+        type: number
+      neighborhood:
+        description: квартал
+        type: string
+      province:
+        description: провинция
+        type: string
+      region:
+        description: регион
+        type: string
+      street:
+        description: улица
+        type: string
+    required:
+    - country
+    type: object
+  github_com_location-microservice_internal_usecase_dto.NearestStationDTO:
+    properties:
+      distance:
+        description: метры
+        type: number
+      lat:
+        type: number
+      lines:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.TransportLineInfoEnriched'
+        type: array
+      lon:
+        type: number
+      name:
+        type: string
+      station_id:
+        type: integer
+      type:
+        type: string
+    type: object
   github_com_location-microservice_internal_usecase_dto.NearestTransportRequest:
     properties:
       lat:
@@ -172,6 +463,17 @@ definitions:
     required:
     - lat
     - lon
+    type: object
+  github_com_location-microservice_internal_usecase_dto.PointTransportResult:
+    properties:
+      point_index:
+        type: integer
+      search_point:
+        $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.Point'
+      stations:
+        items:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichedTransportStation'
+        type: array
     type: object
   github_com_location-microservice_internal_usecase_dto.RadiusPOIRequest:
     properties:
@@ -278,6 +580,19 @@ definitions:
       type:
         type: string
     type: object
+  github_com_location-microservice_internal_usecase_dto.TransportLineInfoEnriched:
+    properties:
+      color:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      ref:
+        type: string
+      type:
+        type: string
+    type: object
   github_com_location-microservice_internal_usecase_dto.TransportLineSimple:
     properties:
       color:
@@ -300,6 +615,28 @@ definitions:
         type: array
     required:
     - ids
+    type: object
+  github_com_location-microservice_internal_usecase_dto.TransportSearchPointDTO:
+    properties:
+      lat:
+        maximum: 90
+        minimum: -90
+        type: number
+      limit:
+        maximum: 20
+        minimum: 1
+        type: integer
+      lon:
+        maximum: 180
+        minimum: -180
+        type: number
+      types:
+        items:
+          type: string
+        type: array
+    required:
+    - lat
+    - lon
     type: object
   github_com_location-microservice_internal_usecase_dto.TransportStationWithLines:
     properties:
@@ -527,6 +864,287 @@ paths:
       summary: Получение векторного тайла с административными границами
       tags:
       - Tiles
+  /api/v1/debug/enrichment/location:
+    get:
+      consumes:
+      - application/json
+      description: Тестирует полный процесс обогащения локации. GET версия для быстрого
+        тестирования в браузере.
+      parameters:
+      - description: Страна (обязательно)
+        in: query
+        name: country
+        required: true
+        type: string
+      - description: Регион
+        in: query
+        name: region
+        type: string
+      - description: Провинция
+        in: query
+        name: province
+        type: string
+      - description: Город
+        in: query
+        name: city
+        type: string
+      - description: Район
+        in: query
+        name: district
+        type: string
+      - description: Район/квартал
+        in: query
+        name: neighborhood
+        type: string
+      - description: Улица
+        in: query
+        name: street
+        type: string
+      - description: Номер дома
+        in: query
+        name: house_number
+        type: string
+      - description: Почтовый индекс
+        in: query
+        name: postal_code
+        type: string
+      - description: Широта
+        in: query
+        maximum: 90
+        minimum: -90
+        name: lat
+        type: number
+      - description: Долгота
+        in: query
+        maximum: 180
+        minimum: -180
+        name: lon
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Обогащённая локация
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationResponse'
+              type: object
+        "400":
+          description: Неверные параметры запроса
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Обогащение локации (GET дебаг/тест)
+      tags:
+      - Enrichment Debug
+    post:
+      consumes:
+      - application/json
+      description: 'Тестирует полный процесс обогащения локации: резолвинг границ,
+        поиск транспорта. Возвращает обогащённые данные в том же формате, что и worker
+        обогащения.'
+      parameters:
+      - description: Данные локации для обогащения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Обогащённая локация
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationResponse'
+              type: object
+        "400":
+          description: Неверные параметры запроса
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Обогащение локации (дебаг/тест)
+      tags:
+      - Enrichment Debug
+  /api/v1/debug/enrichment/location/batch:
+    post:
+      consumes:
+      - application/json
+      description: 'Обогащает пачку локаций эффективно (2 параллельных запроса в БД).
+        Локации делятся на 2 группы: с координатами (reverse geocoding) и без (поиск
+        по названиям). Оптимально для обработки 50+ локаций за раз.'
+      parameters:
+      - description: Данные локаций для обогащения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationBatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Обогащённые локации
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugLocationBatchResponse'
+              type: object
+        "400":
+          description: Неверные параметры запроса
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Батч обогащение локаций (дебаг/тест)
+      tags:
+      - Enrichment Debug
+  /api/v1/debug/enrichment/transport:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает ближайшие станции общественного транспорта с детальной
+        информацией. GET версия для быстрого тестирования в браузере.
+      parameters:
+      - description: Широта
+        in: query
+        maximum: 90
+        minimum: -90
+        name: lat
+        required: true
+        type: number
+      - description: Долгота
+        in: query
+        maximum: 180
+        minimum: -180
+        name: lon
+        required: true
+        type: number
+      - description: Типы транспорта через запятую (metro,train,tram,bus)
+        in: query
+        name: types
+        type: string
+      - description: Максимальное расстояние в метрах (100-10000)
+        in: query
+        name: max_distance
+        type: number
+      - description: Максимальное количество результатов (1-50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Список ближайших станций
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportResponse'
+              type: object
+        "400":
+          description: Неверные параметры запроса
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Получение ближайших станций транспорта (GET дебаг/тест)
+      tags:
+      - Enrichment Debug
+    post:
+      consumes:
+      - application/json
+      description: Возвращает ближайшие станции общественного транспорта с детальной
+        информацией для тестирования логики обогащения. Включает линейное расстояние,
+        примерное пешеходное расстояние и время, информацию о линиях с цветами.
+      parameters:
+      - description: Параметры поиска
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Список ближайших станций
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportResponse'
+              type: object
+        "400":
+          description: Неверные параметры запроса
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Получение ближайших станций транспорта (дебаг/тест)
+      tags:
+      - Enrichment Debug
+  /api/v1/debug/enrichment/transport/batch:
+    post:
+      consumes:
+      - application/json
+      description: Возвращает ближайшие станции общественного транспорта с информацией
+        о линиях для пачки координат одним эффективным запросом. Идеально для обогащения
+        множества объектов.
+      parameters:
+      - description: Batch параметры поиска
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportBatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Результаты для каждой точки
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_location-microservice_internal_usecase_dto.EnrichmentDebugTransportBatchResponse'
+              type: object
+        "400":
+          description: Неверные параметры запроса
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/github_com_location-microservice_internal_pkg_utils.ErrorResponse'
+      summary: Batch получение ближайших станций транспорта для нескольких точек
+      tags:
+      - Enrichment Debug
   /api/v1/green-spaces/tiles/{z}/{x}/{y}.pbf:
     get:
       consumes:

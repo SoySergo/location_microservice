@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -64,6 +65,7 @@ func main() {
 		District:     ptr("Gràcia"),
 		Neighborhood: ptr("Vila de Gràcia"),
 		Street:       ptr("Calle del Torrent de l'Olla"),
+		HouseNumber:  ptr("53"),
 		Latitude:     ptr(41.4027042),
 		Longitude:    ptr(2.1599563),
 	}
@@ -116,7 +118,7 @@ func main() {
 				Count:   maxMessagesPerRead,
 				Block:   0,
 			}).Result()
-			
+
 			if err != nil {
 				if err == redis.Nil {
 					// No messages available, continue waiting

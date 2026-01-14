@@ -14,6 +14,9 @@ type BoundaryRepository interface {
 	// SearchByText выполняет текстовый поиск по названиям границ с поддержкой языков и фильтрации
 	SearchByText(ctx context.Context, query string, lang string, adminLevels []int, limit int) ([]*domain.AdminBoundary, error)
 
+	// SearchByTextBatch выполняет батчевый текстовый поиск для нескольких запросов одним SQL
+	SearchByTextBatch(ctx context.Context, requests []domain.BoundarySearchRequest) ([]domain.BoundarySearchResult, error)
+
 	// ReverseGeocode возвращает адрес по координатам
 	ReverseGeocode(ctx context.Context, lat, lon float64) (*domain.Address, error)
 
@@ -25,6 +28,10 @@ type BoundaryRepository interface {
 
 	// GetByPoint возвращает административные границы для точки (reverse geocoding)
 	GetByPoint(ctx context.Context, lat, lon float64) ([]*domain.AdminBoundary, error)
+
+	// GetByPointBatch возвращает административные границы для нескольких точек одним запросом
+	// Возвращает map[point_idx] -> []*AdminBoundary с полными данными о границах
+	GetByPointBatch(ctx context.Context, points []domain.LatLon) (map[int][]*domain.AdminBoundary, error)
 
 	// Search выполняет текстовый поиск по названиям границ
 	Search(ctx context.Context, query string, limit int) ([]*domain.AdminBoundary, error)

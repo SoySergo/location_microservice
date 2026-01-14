@@ -47,4 +47,20 @@ type TransportRepository interface {
 
 	// GetLinesByStationID возвращает линии для станции (для hover логики)
 	GetLinesByStationID(ctx context.Context, stationID int64) ([]*domain.TransportLine, error)
+
+	// GetNearestStationsBatch возвращает ближайшие станции для пачки координат одним запросом.
+	// Не включает информацию о линиях - используйте GetLinesByStationIDsBatch для получения линий.
+	GetNearestStationsBatch(ctx context.Context, req domain.BatchTransportRequest) ([]domain.TransportStationWithLines, error)
+
+	// GetLinesByStationIDsBatch возвращает линии для множества станций одним запросом.
+	// Используется совместно с GetNearestStationsBatch для batch-обогащения.
+	GetLinesByStationIDsBatch(ctx context.Context, stationIDs []int64) (map[int64][]domain.TransportLineInfo, error)
+
+	// GetNearestTransportByPriority возвращает ближайший транспорт с приоритетом по типу и расстоянию.
+	// Приоритет: metro/train -> bus/tram. Включает информацию о линиях.
+	GetNearestTransportByPriority(ctx context.Context, lat, lon float64, radiusM float64, limit int) ([]domain.NearestTransportWithLines, error)
+
+	// GetNearestTransportByPriorityBatch возвращает ближайший транспорт с приоритетом для множества точек.
+	// Один SQL запрос для всех точек с применением логики приоритизации.
+	GetNearestTransportByPriorityBatch(ctx context.Context, points []domain.TransportSearchPoint, radiusM float64, limitPerPoint int) ([]domain.BatchTransportResult, error)
 }

@@ -6,10 +6,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
-	fiberSwagger "github.com/swaggo/fiber-swagger"
 	"github.com/location-microservice/internal/config"
 	"github.com/location-microservice/internal/delivery/http/handler"
 	"github.com/location-microservice/internal/delivery/http/middleware"
+	fiberSwagger "github.com/swaggo/fiber-swagger"
 	"go.uber.org/zap"
 )
 
@@ -20,12 +20,14 @@ type Server struct {
 	logger *zap.Logger
 
 	// Handlers
-	searchHandler    *handler.SearchHandler
-	transportHandler *handler.TransportHandler
-	poiHandler       *handler.POIHandler
-	tileHandler      *handler.TileHandler
-	poiTileHandler   *handler.POITileHandler
-	statsHandler     *handler.StatsHandler
+	searchHandler          *handler.SearchHandler
+	transportHandler       *handler.TransportHandler
+	poiHandler             *handler.POIHandler
+	tileHandler            *handler.TileHandler
+	poiTileHandler         *handler.POITileHandler
+	statsHandler           *handler.StatsHandler
+	enrichmentDebugHandler *handler.EnrichmentDebugHandler
+	apiExplorerHandler     *handler.APIExplorerHandler
 }
 
 // NewServer - создание нового HTTP сервера
@@ -38,6 +40,7 @@ func NewServer(
 	tileHandler *handler.TileHandler,
 	poiTileHandler *handler.POITileHandler,
 	statsHandler *handler.StatsHandler,
+	enrichmentDebugHandler *handler.EnrichmentDebugHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
 		AppName:      "Location Microservice",
@@ -47,16 +50,24 @@ func NewServer(
 		ErrorHandler: customErrorHandler(logger),
 	})
 
+	// Создаём API Explorer handler
+	apiExplorerHandler, err := handler.NewAPIExplorerHandler()
+	if err != nil {
+		logger.Warn("Failed to initialize API Explorer handler, falling back to static file", zap.Error(err))
+	}
+
 	s := &Server{
-		app:              app,
-		config:           cfg,
-		logger:           logger,
-		searchHandler:    searchHandler,
-		transportHandler: transportHandler,
-		poiHandler:       poiHandler,
-		tileHandler:      tileHandler,
-		poiTileHandler:   poiTileHandler,
-		statsHandler:     statsHandler,
+		app:                    app,
+		config:                 cfg,
+		logger:                 logger,
+		searchHandler:          searchHandler,
+		transportHandler:       transportHandler,
+		poiHandler:             poiHandler,
+		tileHandler:            tileHandler,
+		poiTileHandler:         poiTileHandler,
+		statsHandler:           statsHandler,
+		enrichmentDebugHandler: enrichmentDebugHandler,
+		apiExplorerHandler:     apiExplorerHandler,
 	}
 
 	s.setupMiddlewares()
@@ -79,6 +90,23 @@ func (s *Server) setupMiddlewares() {
 func (s *Server) setupRoutes() {
 	// Swagger documentation route
 	s.app.Get("/swagger/*", fiberSwagger.WrapHandler)
+
+	// Static files for debug UI
+	s.app.Static("/static", "./static")
+
+	// Debug map page redirect
+	s.app.Get("/debug/map", func(c *fiber.Ctx) error {
+		return c.Redirect("/static/transport-map.html")
+	})
+
+	// API Explorer page - рендеринг из шаблонов или fallback на статический файл
+	s.app.Get("/debug/explorer", func(c *fiber.Ctx) error {
+		if s.apiExplorerHandler != nil {
+			return s.apiExplorerHandler.RenderExplorer(c)
+		}
+		// Fallback на статический файл
+		return c.Redirect("/static/api-explorer.html")
+	})
 
 	api := s.app.Group("/api/v1")
 
@@ -127,6 +155,27 @@ func (s *Server) setupRoutes() {
 
 	// Radius tiles - комплексный endpoint для получения всех данных в радиусе
 	api.Post("/radius/tiles.pbf", s.tileHandler.GetRadiusTiles)
+
+	// Debug/Test routes - для тестирования логики обогащения
+	debug := api.Group("/debug")
+	debug.Post("/enrichment/transport", s.enrichmentDebugHandler.GetNearestTransportEnriched)
+	debug.Get("/enrichment/transport", s.enrichmentDebugHandler.GetNearestTransportEnrichedGET)
+	debug.Post("/enrichment/transport/batch", s.enrichmentDebugHandler.GetNearestTransportEnrichedBatch)
+	debug.Post("/enrichment/location", s.enrichmentDebugHandler.EnrichLocation)
+	debug.Get("/enrichment/location", s.enrichmentDebugHandler.EnrichLocationGET)
+	debug.Post("/enrichment/location/batch", s.enrichmentDebugHandler.EnrichLocationBatch)
+
+	// Priority Transport routes - транспорт с приоритетом metro/train -> bus/tram
+	debug.Get("/transport/priority", s.enrichmentDebugHandler.GetPriorityTransport)
+	debug.Post("/transport/priority", s.enrichmentDebugHandler.GetPriorityTransportPOST)
+	debug.Post("/transport/priority/batch", s.enrichmentDebugHandler.GetPriorityTransportBatch)
+
+	// Mapbox config endpoint for debug map UI
+	debug.Get("/config/mapbox", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"token": s.config.Mapbox.AccessToken,
+		})
+	})
 
 	// Stats
 	api.Get("/stats", s.statsHandler.GetStatistics)

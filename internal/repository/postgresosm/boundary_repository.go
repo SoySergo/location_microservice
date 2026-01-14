@@ -354,6 +354,14 @@ func (r *boundaryRepository) GetByPoint(ctx context.Context, lat, lon float64) (
 			osm_id,
 			COALESCE(name, '') AS name,
 			COALESCE(NULLIF(tags->'name:en', ''), '') AS name_en,
+			COALESCE(NULLIF(tags->'name:es', ''), '') AS name_es,
+			COALESCE(NULLIF(tags->'name:ca', ''), '') AS name_ca,
+			COALESCE(NULLIF(tags->'name:ru', ''), '') AS name_ru,
+			COALESCE(NULLIF(tags->'name:uk', ''), '') AS name_uk,
+			COALESCE(NULLIF(tags->'name:fr', ''), '') AS name_fr,
+			COALESCE(NULLIF(tags->'name:pt', ''), '') AS name_pt,
+			COALESCE(NULLIF(tags->'name:it', ''), '') AS name_it,
+			COALESCE(NULLIF(tags->'name:de', ''), '') AS name_de,
 			COALESCE(boundary, 'administrative') AS type,
 			COALESCE((admin_level)::integer, 0) AS admin_level,
 			ST_Y(ST_Centroid(ST_Transform(way, %d))) AS center_lat,
@@ -384,7 +392,11 @@ func (r *boundaryRepository) GetByPoint(ctx context.Context, lat, lon float64) (
 		var adminLevelInt int
 
 		err := rows.Scan(
-			&b.OSMId, &b.Name, &b.NameEn, &b.Type, &adminLevelInt,
+			&b.OSMId, &b.Name,
+			&b.NameEn, &b.NameEs, &b.NameCa,
+			&b.NameRu, &b.NameUk, &b.NameFr,
+			&b.NamePt, &b.NameIt, &b.NameDe,
+			&b.Type, &adminLevelInt,
 			&b.CenterLat, &b.CenterLon, &b.AreaSqKm,
 		)
 		if err != nil {
@@ -399,6 +411,208 @@ func (r *boundaryRepository) GetByPoint(ctx context.Context, lat, lon float64) (
 	}
 
 	return boundaries, nil
+}
+
+// GetByPointBatch возвращает административные границы для нескольких точек одним запросом
+// Возвращает map[point_idx] -> []*AdminBoundary с полными данными о границах (включая переводы)
+// Оптимизировано: использует UNION ALL для лучшего использования пространственных индексов
+// и пропускает дорогие вычисления (centroid, area) для максимальной скорости
+func (r *boundaryRepository) GetByPointBatch(ctx context.Context, points []domain.LatLon) (map[int][]*domain.AdminBoundary, error) {
+	if len(points) == 0 {
+		return make(map[int][]*domain.AdminBoundary), nil
+	}
+
+	// Строим UNION ALL для каждой точки - это позволяет PostgreSQL использовать
+	// пространственный индекс для каждой точки отдельно (намного быстрее чем JOIN)
+	var queryParts []string
+	var args []interface{}
+	argIndex := 1
+
+	for i, point := range points {
+		// Оптимизация: убраны ST_Centroid и ST_Area - они очень дорогие (~500ms)
+		// и не критичны для результата обогащения
+		part := fmt.Sprintf(`
+			SELECT 
+				%d AS point_id,
+				osm_id,
+				COALESCE(name, '') AS name,
+				COALESCE(NULLIF(tags->'name:en', ''), '') AS name_en,
+				COALESCE(NULLIF(tags->'name:es', ''), '') AS name_es,
+				COALESCE(NULLIF(tags->'name:ca', ''), '') AS name_ca,
+				COALESCE(NULLIF(tags->'name:ru', ''), '') AS name_ru,
+				COALESCE(NULLIF(tags->'name:uk', ''), '') AS name_uk,
+				COALESCE(NULLIF(tags->'name:fr', ''), '') AS name_fr,
+				COALESCE(NULLIF(tags->'name:pt', ''), '') AS name_pt,
+				COALESCE(NULLIF(tags->'name:it', ''), '') AS name_it,
+				COALESCE(NULLIF(tags->'name:de', ''), '') AS name_de,
+				COALESCE(boundary, 'administrative') AS type,
+				COALESCE((admin_level)::integer, 0) AS admin_level
+			FROM %s
+			WHERE boundary = 'administrative'
+			  AND admin_level IS NOT NULL
+			  AND (admin_level)::integer IN (2, 4, 6, 8, 9, 10)
+			  AND ST_Contains(way, ST_Transform(ST_SetSRID(ST_MakePoint($%d, $%d), %d), %d))
+		`, i+1, planetPolygonTable,
+			argIndex, argIndex+1, SRID4326, SRID3857)
+
+		queryParts = append(queryParts, part)
+		args = append(args, point.Lon, point.Lat)
+		argIndex += 2
+	}
+
+	query := strings.Join(queryParts, " UNION ALL ") + " ORDER BY point_id, admin_level ASC"
+
+	rows, err := r.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		r.logger.Error("failed to batch get boundaries by point", zap.Int("points_count", len(points)), zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	results := make(map[int][]*domain.AdminBoundary)
+
+	for rows.Next() {
+		var pointID int
+		var b domain.AdminBoundary
+		var adminLevelInt int
+
+		err := rows.Scan(
+			&pointID, &b.OSMId, &b.Name,
+			&b.NameEn, &b.NameEs, &b.NameCa,
+			&b.NameRu, &b.NameUk, &b.NameFr,
+			&b.NamePt, &b.NameIt, &b.NameDe,
+			&b.Type, &adminLevelInt,
+		)
+		if err != nil {
+			r.logger.Error("failed to scan batch boundary row", zap.Error(err))
+			continue
+		}
+
+		b.ID = b.OSMId
+		b.AdminLevel = adminLevelInt
+
+		// pointID начинается с 1, индексы массива с 0
+		idx := pointID - 1
+		if idx >= 0 && idx < len(points) {
+			results[idx] = append(results[idx], &b)
+		}
+	}
+
+	return results, nil
+}
+
+// SearchByTextBatch выполняет батчевый текстовый поиск для нескольких запросов одним SQL
+// Оптимизированная версия: использует exact match с индексами вместо медленного ILIKE
+// и пропускает дорогие вычисления (centroid, area) для максимальной скорости
+func (r *boundaryRepository) SearchByTextBatch(ctx context.Context, requests []domain.BoundarySearchRequest) ([]domain.BoundarySearchResult, error) {
+	if len(requests) == 0 {
+		return []domain.BoundarySearchResult{}, nil
+	}
+
+	// Строим UNION ALL для всех запросов
+	// Используем exact match (= или ILIKE без wildcards) для использования индексов
+	var queryParts []string
+	var args []interface{}
+	argIndex := 1
+
+	for _, req := range requests {
+		// Оптимизация: сначала точное совпадение по name или переводам (использует индексы)
+		// Убраны ST_Centroid и ST_Area - они очень дорогие и не критичны для результата
+		part := fmt.Sprintf(`
+			(SELECT 
+				%d AS req_index,
+				osm_id,
+				COALESCE(name, '') AS name,
+				COALESCE(NULLIF(tags->'name:en', ''), '') AS name_en,
+				COALESCE(NULLIF(tags->'name:es', ''), '') AS name_es,
+				COALESCE(NULLIF(tags->'name:ca', ''), '') AS name_ca,
+				COALESCE(NULLIF(tags->'name:ru', ''), '') AS name_ru,
+				COALESCE(NULLIF(tags->'name:uk', ''), '') AS name_uk,
+				COALESCE(NULLIF(tags->'name:fr', ''), '') AS name_fr,
+				COALESCE(NULLIF(tags->'name:pt', ''), '') AS name_pt,
+				COALESCE(NULLIF(tags->'name:it', ''), '') AS name_it,
+				COALESCE(NULLIF(tags->'name:de', ''), '') AS name_de,
+				COALESCE(boundary, 'administrative') AS type,
+				COALESCE((admin_level)::integer, 0) AS admin_level
+			FROM %s
+			WHERE boundary = 'administrative'
+			  AND admin_level IS NOT NULL
+			  AND (admin_level)::integer = $%d
+			  AND (
+				name = $%d
+				OR tags->'name:en' = $%d
+				OR tags->'name:es' = $%d
+				OR tags->'name:ru' = $%d
+				OR tags->'name:ca' = $%d
+				OR LOWER(name) = LOWER($%d)
+			  )
+			ORDER BY 
+				CASE WHEN name = $%d THEN 0
+				     WHEN LOWER(name) = LOWER($%d) THEN 1
+				     ELSE 2 END,
+				name ASC
+			LIMIT 1)
+		`, req.Index, planetPolygonTable,
+			argIndex, argIndex+1, argIndex+1, argIndex+1, argIndex+1, argIndex+1, argIndex+1, argIndex+1, argIndex+1)
+
+		queryParts = append(queryParts, part)
+		args = append(args, req.AdminLevel, req.Name)
+		argIndex += 2
+	}
+
+	query := strings.Join(queryParts, " UNION ALL ")
+
+	rows, err := r.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		r.logger.Error("failed to batch search boundaries by text", zap.Int("requests_count", len(requests)), zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	// Создаем результаты, изначально все не найдены
+	results := make([]domain.BoundarySearchResult, len(requests))
+	for i, req := range requests {
+		results[i] = domain.BoundarySearchResult{
+			Index:    req.Index,
+			Boundary: nil,
+			Found:    false,
+		}
+	}
+
+	// Индексируем results для быстрого доступа
+	resultMap := make(map[int]int) // req.Index -> position in results
+	for i, req := range requests {
+		resultMap[req.Index] = i
+	}
+
+	for rows.Next() {
+		var reqIndex int
+		var b domain.AdminBoundary
+		var adminLevelInt int
+
+		err := rows.Scan(
+			&reqIndex, &b.OSMId, &b.Name,
+			&b.NameEn, &b.NameEs, &b.NameCa,
+			&b.NameRu, &b.NameUk, &b.NameFr,
+			&b.NamePt, &b.NameIt, &b.NameDe,
+			&b.Type, &adminLevelInt,
+		)
+		if err != nil {
+			r.logger.Error("failed to scan batch search row", zap.Error(err))
+			continue
+		}
+
+		b.ID = b.OSMId
+		b.AdminLevel = adminLevelInt
+
+		// Обновляем результат
+		if pos, ok := resultMap[reqIndex]; ok {
+			results[pos].Boundary = &b
+			results[pos].Found = true
+		}
+	}
+
+	return results, nil
 }
 
 // GetChildren возвращает дочерние границы для родительской (в OSM данных связи parent-child могут отсутствовать)

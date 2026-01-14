@@ -215,13 +215,22 @@ func (s *MapboxBatchScheduler) processBatch(ctx context.Context, batch []*Mapbox
 				walkingDuration = &dur
 			}
 
-			// Calculate linear distance
-			linearDist := calculateDistance(
-				origins[mapping.OriginIndex].Lat,
-				origins[mapping.OriginIndex].Lon,
-				station.Lat,
-				station.Lon,
-			)
+			// Используем дистанцию из БД если есть, иначе вычисляем
+			var linearDist float64
+			if station.Distance != nil {
+				linearDist = *station.Distance
+			} else {
+				linearDist = calculateDistance(
+					origins[mapping.OriginIndex].Lat,
+					origins[mapping.OriginIndex].Lon,
+					station.Lat,
+					station.Lon,
+				)
+			}
+
+			// Convert LineIDs to TransportLineInfo (линии будут заполнены в infrastructure_usecase или worker)
+			var lines []domain.TransportLineInfo
+			// Note: Full line info with colors will be resolved by caller using GetLinesByStationID
 
 			transport = append(transport, domain.TransportWithDistance{
 				StationID:       station.ID,
@@ -229,7 +238,7 @@ func (s *MapboxBatchScheduler) processBatch(ctx context.Context, batch []*Mapbox
 				Type:            station.Type,
 				Lat:             station.Lat,
 				Lon:             station.Lon,
-				LineIDs:         station.LineIDs,
+				Lines:           lines,
 				LinearDistance:  linearDist,
 				WalkingDistance: walkingDistance,
 				WalkingDuration: walkingDuration,

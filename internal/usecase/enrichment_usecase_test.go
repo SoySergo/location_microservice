@@ -195,6 +195,46 @@ func (m *MockTransportRepository) GetNearestStationsGrouped(ctx context.Context,
 	return args.Get(0).([]*domain.TransportStation), args.Error(1)
 }
 
+func (m *MockTransportRepository) GetNearestStationsWithLinesBatch(ctx context.Context, req domain.BatchTransportRequest) ([]domain.TransportStationWithLines, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.TransportStationWithLines), args.Error(1)
+}
+
+func (m *MockTransportRepository) GetNearestStationsBatch(ctx context.Context, req domain.BatchTransportRequest) ([]domain.TransportStationWithLines, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.TransportStationWithLines), args.Error(1)
+}
+
+func (m *MockTransportRepository) GetLinesByStationIDsBatch(ctx context.Context, stationIDs []int64) (map[int64][]domain.TransportLineInfo, error) {
+	args := m.Called(ctx, stationIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[int64][]domain.TransportLineInfo), args.Error(1)
+}
+
+func (m *MockTransportRepository) GetNearestTransportByPriority(ctx context.Context, lat, lon float64, radiusM float64, limit int) ([]domain.NearestTransportWithLines, error) {
+	args := m.Called(ctx, lat, lon, radiusM, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.NearestTransportWithLines), args.Error(1)
+}
+
+func (m *MockTransportRepository) GetNearestTransportByPriorityBatch(ctx context.Context, points []domain.TransportSearchPoint, radiusM float64, limitPerPoint int) ([]domain.BatchTransportResult, error) {
+	args := m.Called(ctx, points, radiusM, limitPerPoint)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.BatchTransportResult), args.Error(1)
+}
+
 // Test EnrichLocation with city name
 func TestEnrichmentUseCase_EnrichLocation_WithCityName(t *testing.T) {
 	// Arrange

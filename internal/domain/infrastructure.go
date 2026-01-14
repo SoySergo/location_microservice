@@ -9,15 +9,15 @@ type InfrastructureResult struct {
 
 // TransportWithDistance - транспортная станция с расстояниями
 type TransportWithDistance struct {
-	StationID       int64    `json:"station_id"`
-	Name            string   `json:"name"`
-	Type            string   `json:"type"`
-	Lat             float64  `json:"lat"`
-	Lon             float64  `json:"lon"`
-	LineIDs         []int64  `json:"line_ids,omitempty"`
-	LinearDistance  float64  `json:"linear_distance"`
-	WalkingDistance *float64 `json:"walking_distance,omitempty"`
-	WalkingDuration *float64 `json:"walking_duration,omitempty"`
+	StationID       int64               `json:"station_id"`
+	Name            string              `json:"name"`
+	Type            string              `json:"type"`
+	Lat             float64             `json:"lat"`
+	Lon             float64             `json:"lon"`
+	Lines           []TransportLineInfo `json:"lines,omitempty"`
+	LinearDistance  float64             `json:"linear_distance"`
+	WalkingDistance *float64            `json:"walking_distance,omitempty"`
+	WalkingDuration *float64            `json:"walking_duration,omitempty"`
 }
 
 // POIWithDistance - точка интереса с расстояниями

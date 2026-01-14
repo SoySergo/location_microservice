@@ -79,31 +79,78 @@ func (uc *InfrastructureUseCase) GetInfrastructure(
 				zap.String("property_id", propertyID.String()),
 				zap.Error(result.Error))
 			// Возвращаем результат без walking distances
-			return uc.buildResultWithoutWalking(transportStations, lat, lon), nil
+			return uc.buildResultWithoutWalking(transportStations, lat, lon, ctx), nil
 		}
+
+		// Обогащаем транспорт информацией о линиях
+		enrichedTransport := uc.enrichTransportWithLines(ctx, result.Transport)
 
 		// Возвращаем успешный результат
 		return &domain.InfrastructureResult{
-			Transport: result.Transport,
+			Transport: enrichedTransport,
 		}, nil
 	}
+}
+
+// enrichTransportWithLines добавляет информацию о линиях к транспортным станциям
+func (uc *InfrastructureUseCase) enrichTransportWithLines(ctx context.Context, transport []domain.TransportWithDistance) []domain.TransportWithDistance {
+	for i := range transport {
+		lines, err := uc.transportRepo.GetLinesByStationID(ctx, transport[i].StationID)
+		if err != nil || len(lines) == 0 {
+			continue
+		}
+
+		lineInfos := make([]domain.TransportLineInfo, 0, len(lines))
+		for _, line := range lines {
+			lineInfos = append(lineInfos, domain.TransportLineInfo{
+				ID:    line.ID,
+				Name:  line.Name,
+				Ref:   line.Ref,
+				Color: line.Color,
+			})
+		}
+		transport[i].Lines = lineInfos
+	}
+	return transport
 }
 
 // buildResultWithoutWalking строит результат без пешеходных расстояний
 func (uc *InfrastructureUseCase) buildResultWithoutWalking(
 	stations []*domain.TransportStation,
 	lat, lon float64,
+	ctx context.Context,
 ) *domain.InfrastructureResult {
 	transport := make([]domain.TransportWithDistance, 0, len(stations))
 	for _, station := range stations {
-		linearDist := uc.calculateDistance(lat, lon, station.Lat, station.Lon)
+		// Используем дистанцию из БД если есть, иначе вычисляем
+		var linearDist float64
+		if station.Distance != nil {
+			linearDist = *station.Distance
+		} else {
+			linearDist = uc.calculateDistance(lat, lon, station.Lat, station.Lon)
+		}
+
+		// Получаем информацию о линиях
+		var lineInfos []domain.TransportLineInfo
+		if lines, err := uc.transportRepo.GetLinesByStationID(ctx, station.ID); err == nil && len(lines) > 0 {
+			lineInfos = make([]domain.TransportLineInfo, 0, len(lines))
+			for _, line := range lines {
+				lineInfos = append(lineInfos, domain.TransportLineInfo{
+					ID:    line.ID,
+					Name:  line.Name,
+					Ref:   line.Ref,
+					Color: line.Color,
+				})
+			}
+		}
+
 		transport = append(transport, domain.TransportWithDistance{
 			StationID:      station.ID,
 			Name:           station.Name,
 			Type:           station.Type,
 			Lat:            station.Lat,
 			Lon:            station.Lon,
-			LineIDs:        station.LineIDs,
+			Lines:          lineInfos,
 			LinearDistance: linearDist,
 		})
 	}
