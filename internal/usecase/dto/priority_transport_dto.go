@@ -1,5 +1,12 @@
 package dto
 
+// This file contains DTOs for priority transport and location enrichment features.
+// These types are used by production code including:
+// - TransportUseCase (internal/usecase/transport_usecase.go)
+// - EnrichedLocationUseCase (internal/usecase/enriched_location_usecase.go)
+// - LocationEnrichmentWorker (internal/worker/location/enrichment_worker.go)
+// Note: Previously named enrichment_debug_dto.go, renamed after removing debug-specific types.
+
 // TransportLineInfoEnriched - информация о линии транспорта (расширенная)
 type TransportLineInfoEnriched struct {
 	ID    int64   `json:"id"`
