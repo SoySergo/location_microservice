@@ -14,6 +14,12 @@ import (
 	"github.com/location-microservice/internal/usecase/dto"
 )
 
+const (
+	// adminLevelIndexMultiplier is used to create unique indices for batch search requests
+	// by combining location index (0-99) with admin level (2-10)
+	adminLevelIndexMultiplier = 100
+)
+
 // SearchUseCase - use case для поиска и геокодирования
 type SearchUseCase struct {
 	boundaryRepo repository.BoundaryRepository
@@ -129,12 +135,12 @@ func (uc *SearchUseCase) BatchReverseGeocode(
 // buildSearchRequestIndex creates a unique index for batch search requests
 // by combining location index and admin level
 func buildSearchRequestIndex(locationIndex, adminLevel int) int {
-	return locationIndex*100 + adminLevel
+	return locationIndex*adminLevelIndexMultiplier + adminLevel
 }
 
 // extractLocationIndex extracts the original location index from a search request index
 func extractLocationIndex(searchRequestIndex int) int {
-	return searchRequestIndex / 100
+	return searchRequestIndex / adminLevelIndexMultiplier
 }
 
 // DetectLocationBatch обнаруживает/обогащает локации без транспорта

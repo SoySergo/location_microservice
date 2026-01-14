@@ -39,11 +39,23 @@ func NewEnrichedLocationUseCase(
 	}
 }
 
-// EnrichLocationBatch обогащает пачку локаций параллельно
-// 1. Горутина 1: DetectLocationBatch для всех локаций → возвращает адреса с ID
-// 2. Горутина 2: GetNearestTransportByPriorityBatch для IsVisible=true → возвращает транспорт
-// 3. Ждём завершения обеих горутин
-// 4. Объединяем и возвращаем результаты
+// EnrichLocationBatch обогащает пачку локаций параллельно.
+//
+// Архитектура параллельной обработки:
+// - Горутина 1: DetectLocationBatch для ВСЕХ локаций → возвращает enriched location с ID границ
+// - Горутина 2: GetNearestTransportByPriorityBatch только для IsVisible=true → возвращает транспорт
+// - Обе горутины работают параллельно с sync.WaitGroup
+// - Результаты объединяются после завершения обеих горутин
+//
+// Поведение при ошибках:
+// - Ошибка DetectLocationBatch прерывает весь процесс (критическая)
+// - Ошибка транспорта не прерывает обработку, результаты возвращаются без транспорта (graceful degradation)
+//
+// Разделение локаций:
+// - Visible: IsVisible=true И есть координаты (Latitude, Longitude) → получают транспорт
+// - Non-visible: остальные → обогащаются только по границам
+//
+// Возвращает EnrichLocationBatchResponse с полными метаданными о процессе обработки.
 func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 	ctx context.Context,
 	req dto.EnrichLocationBatchRequest,

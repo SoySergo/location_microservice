@@ -17,6 +17,10 @@ const (
 	// WalkingDistanceMultiplier estimates walking distance as 20% longer than linear distance
 	// to account for streets, turns, and obstacles
 	WalkingDistanceMultiplier = 1.2
+	// DefaultPriorityTransportRadius is the default search radius for priority transport in meters
+	DefaultPriorityTransportRadius = 1500 // 1.5 km
+	// DefaultPriorityTransportLimit is the default limit of stations per point for priority transport
+	DefaultPriorityTransportLimit = 5
 )
 
 type TransportUseCase struct {
@@ -206,12 +210,12 @@ func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
 	// Set defaults
 	radius := req.Radius
 	if radius == 0 {
-		radius = 1500 // 1.5 km по умолчанию
+		radius = DefaultPriorityTransportRadius
 	}
 
 	limit := req.Limit
 	if limit == 0 {
-		limit = 5
+		limit = DefaultPriorityTransportLimit
 	}
 
 	uc.logger.Info("GetNearestTransportByPriorityBatch",
