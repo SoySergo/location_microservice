@@ -177,6 +177,114 @@ func (uc *TransportUseCase) BatchGetNearestStations(
 	}, nil
 }
 
+// GetNearestTransportByPriorityBatch возвращает ближайший транспорт с приоритетом
+// для множества точек одним эффективным запросом к БД.
+// Приоритет: metro/train -> bus/tram (если нет высокоприоритетного в радиусе)
+func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
+	ctx context.Context,
+	req dto.PriorityTransportBatchRequest,
+) (*dto.PriorityTransportBatchResponse, error) {
+	// Validate request
+	if len(req.Points) == 0 {
+		return nil, errors.ErrInvalidRequest
+	}
+
+	for _, p := range req.Points {
+		if !utils.ValidateCoordinates(p.Lat, p.Lon) {
+			return nil, errors.ErrInvalidCoordinates
+		}
+	}
+
+	// Set defaults
+	radius := req.Radius
+	if radius == 0 {
+		radius = 1500 // 1.5 km по умолчанию
+	}
+
+	limit := req.Limit
+	if limit == 0 {
+		limit = 5
+	}
+
+	uc.logger.Info("GetNearestTransportByPriorityBatch",
+		zap.Int("points_count", len(req.Points)),
+		zap.Float64("radius", radius),
+		zap.Int("limit_per_point", limit))
+
+	// Преобразуем DTO в domain
+	domainPoints := make([]domain.TransportSearchPoint, len(req.Points))
+	for i, p := range req.Points {
+		domainPoints[i] = domain.TransportSearchPoint{
+			Lat:   p.Lat,
+			Lon:   p.Lon,
+			Limit: limit,
+		}
+	}
+
+	// Получаем станции одним запросом
+	batchResults, err := uc.transportRepo.GetNearestTransportByPriorityBatch(ctx, domainPoints, radius, limit)
+	if err != nil {
+		uc.logger.Error("Failed to get batch priority transport", zap.Error(err))
+		return nil, err
+	}
+
+	// Преобразуем в DTO с расчётом времени ходьбы
+	walkingSpeedMps := 1.39 // ~5 km/h
+	walkingSpeedKmH := walkingSpeedMps * 3.6
+	results := make([]dto.PriorityTransportPointResult, len(batchResults))
+	totalStations := 0
+
+	for i, br := range batchResults {
+		stations := make([]dto.PriorityTransportStation, 0, len(br.Stations))
+
+		for _, s := range br.Stations {
+			walkingDistance := s.Distance * 1.2
+			walkingTime := walkingDistance / walkingSpeedMps / 60
+
+			lines := make([]dto.TransportLineInfoEnriched, 0, len(s.Lines))
+			for _, line := range s.Lines {
+				lines = append(lines, dto.TransportLineInfoEnriched{
+					ID:    line.ID,
+					Name:  line.Name,
+					Ref:   line.Ref,
+					Type:  line.Type,
+					Color: line.Color,
+				})
+			}
+
+			stations = append(stations, dto.PriorityTransportStation{
+				StationID:       s.StationID,
+				Name:            s.Name,
+				NameEn:          s.NameEn,
+				Type:            s.Type,
+				Lat:             s.Lat,
+				Lon:             s.Lon,
+				LinearDistance:  s.Distance,
+				WalkingDistance: walkingDistance,
+				WalkingTime:     walkingTime,
+				Lines:           lines,
+			})
+		}
+
+		results[i] = dto.PriorityTransportPointResult{
+			PointIndex:  br.PointIndex,
+			SearchPoint: dto.Point{Lat: br.SearchPoint.Lat, Lon: br.SearchPoint.Lon},
+			Stations:    stations,
+		}
+		totalStations += len(stations)
+	}
+
+	return &dto.PriorityTransportBatchResponse{
+		Results: results,
+		Meta: dto.PriorityTransportBatchMeta{
+			TotalPoints:     len(req.Points),
+			TotalStations:   totalStations,
+			RadiusM:         radius,
+			WalkingSpeedKmH: walkingSpeedKmH,
+		},
+	}, nil
+}
+
 // GetTransportTileByTypes возвращает MVT тайл с транспортом с фильтрацией по типам
 func (uc *TransportUseCase) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
 // Валидация zoom level
