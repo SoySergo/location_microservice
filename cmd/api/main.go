@@ -146,25 +146,10 @@ func main() {
 		cfg.Tile.POIMaxFeatures,
 	)
 
-	// EnrichmentUseCase - для обогащения локаций
-	enrichmentUC := usecase.NewEnrichmentUseCase(
-		boundaryRepo,
-		transportRepo,
-		log,
-		[]string{"metro", "train", "tram", "bus"}, // типы транспорта по умолчанию
-		1500, // радиус поиска транспорта в метрах (1.5 км)
-	)
-
 	// TODO: statsRepo not implemented yet, using nil for now
 	statsUC := usecase.NewStatsUseCase(
 		nil, // statsRepo
 		cacheRepo,
-		log,
-	)
-
-	enrichmentDebugUC := usecase.NewEnrichmentDebugUseCase(
-		transportRepo,
-		enrichmentUC,
 		log,
 	)
 
@@ -180,7 +165,6 @@ func main() {
 	tileHandler := handler.NewTileHandler(tileUC, log)
 	poiTileHandler := handler.NewPOITileHandler(poiTileUC, log)
 	statsHandler := handler.NewStatsHandler(statsUC, log)
-	enrichmentDebugHandler := handler.NewEnrichmentDebugHandler(enrichmentDebugUC, log)
 	enrichedLocationHandler := handler.NewEnrichedLocationHandler(enrichedLocationUC, log)
 
 	log.Info("HTTP handlers initialized")
@@ -195,7 +179,6 @@ func main() {
 		tileHandler,
 		poiTileHandler,
 		statsHandler,
-		enrichmentDebugHandler,
 		enrichedLocationHandler,
 	)
 
