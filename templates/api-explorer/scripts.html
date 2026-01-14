@@ -27,6 +27,68 @@
         {{end}}
     };
 
+    // ========== Request Examples ==========
+    const requestExamples = {
+        // Search & Geocoding
+        'search': { params: { q: 'Barcelona', language: 'en', limit: 10 } },
+        'reverse-geocode': { body: { lat: 41.3851, lon: 2.1734 } },
+        'reverse-geocode-batch': { body: { points: [{ lat: 41.3851, lon: 2.1734 }, { lat: 41.4036, lon: 2.1744 }] } },
+        'boundary-by-id': { pathParams: { id: '1' } },
+        
+        // Location Enrichment
+        'enrich-location': { 
+            body: { 
+                country: 'Spain',
+                city: 'Barcelona',
+                district: 'Eixample',
+                latitude: 41.3851,
+                longitude: 2.1734,
+                is_visible: true
+            } 
+        },
+        'enrich-location-batch': {
+            body: {
+                locations: [
+                    { index: 0, country: 'Spain', city: 'Barcelona', latitude: 41.3851, longitude: 2.1734, is_visible: true },
+                    { index: 1, country: 'Spain', city: 'Madrid', latitude: 40.4168, longitude: -3.7038, is_visible: true }
+                ]
+            }
+        },
+        'detect-location-batch': {
+            body: {
+                locations: [
+                    { index: 0, country: 'Spain', city: 'Barcelona' },
+                    { index: 1, country: 'Spain', region: 'Catalonia', city: 'Girona' }
+                ]
+            }
+        },
+        
+        // Transport
+        'transport-nearest': { body: { lat: 41.3851, lon: 2.1734, max_distance: 1000, types: ['metro', 'bus'] } },
+        'transport-nearest-batch': { body: { points: [{ lat: 41.3851, lon: 2.1734 }], max_distance: 1000, types: ['metro'] } },
+        'transport-priority': { params: { lat: 41.3851, lon: 2.1734, radius: 1500, limit: 5 } },
+        'transport-priority-batch': { body: { points: [{ lat: 41.3851, lon: 2.1734 }], radius: 1500, limit: 5 } },
+        'station-lines': { pathParams: { station_id: '1' } },
+        
+        // POI
+        'poi-radius': { body: { lat: 41.3851, lon: 2.1734, radius: 500, categories: ['healthcare', 'shopping'] } },
+        'poi-categories': { params: { language: 'en' } },
+        'poi-subcategories': { pathParams: { id: 'healthcare' } },
+        
+        // Tiles (no examples needed for tiles as they require specific z/x/y coordinates)
+        'tile-boundaries': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        'tile-transport': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        'tile-transport-filtered': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        'tile-poi': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        'tile-green-spaces': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        'tile-water': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        'tile-beaches': { pathParams: { z: 13, x: 4096, y: 3073 } },
+        
+        // System
+        'stats': {},
+        'health': {}
+    };
+
     // ========== DOM Elements ==========
     const resultsContainer = document.getElementById('results-container');
     const uiResults = document.getElementById('ui-results');
@@ -181,8 +243,18 @@
     function updateUI() {
         const method = METHODS[currentMethod];
         typesGroup.style.display = method.showTypes ? 'block' : 'none';
-        const minPoints = method.isBatch ? 1 : 1;
-        executeBtn.disabled = searchPoints.length < minPoints;
+        
+        // Методы, которые не требуют точек на карте
+        const noPointsMethods = ['search', 'poi-categories', 'stats', 'health'];
+        const needsPoints = !noPointsMethods.includes(currentMethod) && !currentMethod.startsWith('tile-');
+        
+        if (needsPoints) {
+            const minPoints = method.isBatch ? 1 : 1;
+            executeBtn.disabled = searchPoints.length < minPoints;
+        } else {
+            executeBtn.disabled = false;
+        }
+        
         pointsCountSpan.textContent = searchPoints.length;
     }
 
@@ -310,10 +382,28 @@
     };
 
     // ========== API Requests ==========
+    // Функция для формирования URL с параметрами
+    function buildUrl(endpoint, params, pathParams) {
+        let url = endpoint;
+        
+        // Заменяем path parameters
+        if (pathParams) {
+            Object.keys(pathParams).forEach(key => {
+                url = url.replace(`{${key}}`, pathParams[key]);
+            });
+        }
+        
+        // Добавляем query parameters
+        if (params && Object.keys(params).length > 0) {
+            const searchParams = new URLSearchParams(params);
+            url += '?' + searchParams.toString();
+        }
+        
+        return url;
+    }
+
     async function executeRequest() {
         const method = METHODS[currentMethod];
-
-        if (searchPoints.length === 0) return;
 
         uiResults.innerHTML = '<div class="loading">Загрузка...</div>';
         clearStationMarkers();
@@ -322,47 +412,114 @@
             let response;
             const radius = parseFloat(document.getElementById('param-radius').value) || 1500;
             const limit = parseInt(document.getElementById('param-limit').value) || 5;
+            const example = requestExamples[currentMethod] || {};
 
-            if (currentMethod === 'priority-single') {
-                const point = searchPoints[0];
-                const url = `${API_BASE}${method.endpoint}?lat=${point.lat}&lon=${point.lng}&radius=${radius}&limit=${limit}`;
-                response = await fetch(url);
+            // Для методов, использующих точки на карте
+            if (searchPoints.length > 0) {
+                if (method.httpMethod === 'GET') {
+                    // GET запрос с параметрами
+                    const point = searchPoints[0];
+                    const params = {
+                        lat: point.lat,
+                        lon: point.lng,
+                        radius: radius,
+                        limit: limit,
+                        ...example.params
+                    };
+                    
+                    if (method.showTypes) {
+                        const types = getSelectedTypes();
+                        if (types.length > 0) {
+                            params.types = types.join(',');
+                        }
+                    }
+                    
+                    const url = buildUrl(method.endpoint, params, example.pathParams);
+                    response = await fetch(url);
+                } else if (method.httpMethod === 'POST' && method.isBatch) {
+                    // POST Batch запрос
+                    const body = {
+                        points: searchPoints.map(p => ({ lat: p.lat, lon: p.lng })),
+                        radius: radius,
+                        limit: limit,
+                        ...example.body
+                    };
+                    
+                    if (method.showTypes) {
+                        const types = getSelectedTypes();
+                        if (types.length > 0) {
+                            body.types = types;
+                        }
+                    }
+                    
+                    response = await fetch(buildUrl(method.endpoint, null, example.pathParams), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                } else if (method.httpMethod === 'POST') {
+                    // POST Single запрос
+                    const point = searchPoints[0];
+                    const body = {
+                        lat: point.lat,
+                        lon: point.lng,
+                        max_distance: radius,
+                        radius: radius,
+                        limit: limit,
+                        ...example.body
+                    };
+                    
+                    if (method.showTypes) {
+                        const types = getSelectedTypes();
+                        if (types.length > 0) {
+                            body.types = types;
+                        }
+                    }
+                    
+                    response = await fetch(buildUrl(method.endpoint, null, example.pathParams), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                }
+            } else {
+                // Методы без точек на карте (stats, health, categories, etc.)
+                if (method.httpMethod === 'GET') {
+                    const url = buildUrl(method.endpoint, example.params, example.pathParams);
+                    response = await fetch(url);
+                } else if (method.httpMethod === 'POST' && example.body) {
+                    response = await fetch(buildUrl(method.endpoint, null, example.pathParams), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(example.body)
+                    });
+                }
             }
-            else if (currentMethod === 'priority-batch') {
-                const body = {
-                    points: searchPoints.map(p => ({ lat: p.lat, lon: p.lng })),
-                    radius: radius,
-                    limit: limit
+
+            if (!response) {
+                throw new Error('Не удалось выполнить запрос. Проверьте параметры.');
+            }
+
+            // Для тайлов возвращается бинарный ответ
+            if (currentMethod.startsWith('tile-')) {
+                const blob = await response.blob();
+                rawResponse = { 
+                    success: true, 
+                    message: `Тайл получен (${blob.size} байт)`,
+                    contentType: response.headers.get('Content-Type')
                 };
-                response = await fetch(`${API_BASE}${method.endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-            }
-            else if (currentMethod === 'enrichment-single') {
-                const point = searchPoints[0];
-                const types = getSelectedTypes();
-                const typesParam = types.length > 0 ? `&types=${types.join(',')}` : '';
-                const url = `${API_BASE}${method.endpoint}?lat=${point.lat}&lon=${point.lng}&max_distance=${radius}&limit=${limit}${typesParam}`;
-                response = await fetch(url);
-            }
-            else if (currentMethod === 'enrichment-batch') {
-                const types = getSelectedTypes();
-                const body = {
-                    points: searchPoints.map(p => ({
-                        lat: p.lat,
-                        lon: p.lng,
-                        types: types.length > 0 ? types : ['metro'],
-                        limit: limit
-                    })),
-                    max_distance: radius
-                };
-                response = await fetch(`${API_BASE}${method.endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
+                uiResults.innerHTML = `
+                    <div class="meta-info">
+                        <span>Размер: <strong class="highlight">${blob.size} байт</strong></span>
+                        <span>Тип: ${response.headers.get('Content-Type')}</span>
+                    </div>
+                    <div class="instructions">
+                        Тайлы используются для отображения на картах.<br>
+                        Endpoint: <code>${method.endpoint}</code>
+                    </div>
+                `;
+                renderJson();
+                return;
             }
 
             rawResponse = await response.json();

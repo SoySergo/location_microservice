@@ -223,14 +223,30 @@
     }
 
     .method-list {
-        padding: 12px;
+        padding: 8px;
     }
 
+    /* Method Groups */
+    .method-group {
+        margin-bottom: 16px;
+    }
+
+    .group-title {
+        font-size: 0.85rem;
+        color: #00d4ff;
+        margin: 0 0 8px 0;
+        padding: 8px 8px 6px 8px;
+        border-bottom: 1px solid #333;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Method Cards */
     .method-card {
         background: #16213e;
-        border-radius: 8px;
-        padding: 14px;
-        margin-bottom: 10px;
+        border-radius: 6px;
+        padding: 10px;
+        margin: 0 8px 8px 8px;
         cursor: pointer;
         transition: all 0.2s;
         border: 2px solid transparent;
@@ -238,6 +254,7 @@
 
     .method-card:hover {
         background: #1a2744;
+        border-color: #2a3a5a;
     }
 
     .method-card.active {
@@ -245,35 +262,61 @@
         background: #1a2744;
     }
 
-    .method-card h3 {
-        font-size: 0.95rem;
-        color: #fff;
+    .method-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         margin-bottom: 6px;
     }
 
-    .method-card p {
-        font-size: 0.8rem;
+    .method-icon {
+        font-size: 1.1rem;
+        line-height: 1;
+    }
+
+    .method-name {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #fff;
+        line-height: 1.2;
+    }
+
+    .method-description {
+        font-size: 0.75rem;
         color: #888;
-        line-height: 1.4;
+        line-height: 1.3;
+        margin: 0 0 8px 0;
     }
 
-    .method-card .method-type {
+    .method-badges {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+
+    .badge {
         display: inline-block;
-        font-size: 0.7rem;
-        padding: 2px 8px;
-        border-radius: 4px;
-        margin-top: 8px;
+        font-size: 0.65rem;
+        padding: 2px 6px;
+        border-radius: 3px;
         text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.3px;
     }
 
-    .method-card .method-type.single {
-        background: #2d4a22;
-        color: #8bc34a;
+    .badge-GET {
+        background: rgba(13, 202, 240, 0.2);
+        color: #0dcaf0;
     }
 
-    .method-card .method-type.batch {
-        background: #4a3a22;
-        color: #ff9800;
+    .badge-POST {
+        background: rgba(255, 193, 7, 0.2);
+        color: #ffc107;
+    }
+
+    .badge-batch {
+        background: rgba(25, 135, 84, 0.2);
+        color: #198754;
     }
 
     /* Parameters Panel */
