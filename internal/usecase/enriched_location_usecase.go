@@ -9,6 +9,16 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// DefaultTransportRadius is the default search radius for transport stations in meters
+	DefaultTransportRadius = 1500 // 1.5 km
+	// DefaultTransportLimit is the default number of transport stations per point
+	DefaultTransportLimit = 5
+)
+
+// Ensure EnrichedLocationUseCase implements BatchLocationEnricher interface
+var _ BatchLocationEnricher = (*EnrichedLocationUseCase)(nil)
+
 // EnrichedLocationUseCase - usecase для полного обогащения локаций
 type EnrichedLocationUseCase struct {
 	searchUC    *SearchUseCase    // для DetectLocationBatch
@@ -90,8 +100,8 @@ func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 
 			transportReq := dto.PriorityTransportBatchRequest{
 				Points: points,
-				Radius: 1500, // 1.5 km по умолчанию
-				Limit:  5,    // 5 станций на точку
+				Radius: DefaultTransportRadius,
+				Limit:  DefaultTransportLimit,
 			}
 			transportResult, transportErr = uc.transportUC.GetNearestTransportByPriorityBatch(ctx, transportReq)
 		}()

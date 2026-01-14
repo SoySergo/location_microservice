@@ -126,6 +126,17 @@ func (uc *SearchUseCase) BatchReverseGeocode(
 	}, nil
 }
 
+// buildSearchRequestIndex creates a unique index for batch search requests
+// by combining location index and admin level
+func buildSearchRequestIndex(locationIndex, adminLevel int) int {
+	return locationIndex*100 + adminLevel
+}
+
+// extractLocationIndex extracts the original location index from a search request index
+func extractLocationIndex(searchRequestIndex int) int {
+	return searchRequestIndex / 100
+}
+
 // DetectLocationBatch обнаруживает/обогащает локации без транспорта
 // Использует parallel batch queries для эффективной обработки
 func (uc *SearchUseCase) DetectLocationBatch(
@@ -134,6 +145,16 @@ func (uc *SearchUseCase) DetectLocationBatch(
 ) (*dto.DetectLocationBatchResponse, error) {
 	if len(req.Locations) == 0 {
 		return nil, errors.ErrInvalidRequest
+	}
+
+	// Validate that all locations have a Country
+	for i, loc := range req.Locations {
+		if loc.Country == "" {
+			return nil, errors.ErrInvalidRequest.WithDetails(map[string]interface{}{
+				"location_index": i,
+				"error":          "country is required",
+			})
+		}
 	}
 
 	uc.logger.Info("DetectLocationBatch started",
@@ -202,42 +223,42 @@ func (uc *SearchUseCase) DetectLocationBatch(
 				// Добавляем запросы для каждого уровня иерархии
 				if loc.Neighborhood != nil && *loc.Neighborhood != "" {
 					searchRequests = append(searchRequests, domain.BoundarySearchRequest{
-						Index:      loc.Index*100 + 10,
+						Index:      buildSearchRequestIndex(loc.Index, 10),
 						Name:       *loc.Neighborhood,
 						AdminLevel: 10,
 					})
 				}
 				if loc.District != nil && *loc.District != "" {
 					searchRequests = append(searchRequests, domain.BoundarySearchRequest{
-						Index:      loc.Index*100 + 9,
+						Index:      buildSearchRequestIndex(loc.Index, 9),
 						Name:       *loc.District,
 						AdminLevel: 9,
 					})
 				}
 				if loc.City != nil && *loc.City != "" {
 					searchRequests = append(searchRequests, domain.BoundarySearchRequest{
-						Index:      loc.Index*100 + 8,
+						Index:      buildSearchRequestIndex(loc.Index, 8),
 						Name:       *loc.City,
 						AdminLevel: 8,
 					})
 				}
 				if loc.Province != nil && *loc.Province != "" {
 					searchRequests = append(searchRequests, domain.BoundarySearchRequest{
-						Index:      loc.Index*100 + 6,
+						Index:      buildSearchRequestIndex(loc.Index, 6),
 						Name:       *loc.Province,
 						AdminLevel: 6,
 					})
 				}
 				if loc.Region != nil && *loc.Region != "" {
 					searchRequests = append(searchRequests, domain.BoundarySearchRequest{
-						Index:      loc.Index*100 + 4,
+						Index:      buildSearchRequestIndex(loc.Index, 4),
 						Name:       *loc.Region,
 						AdminLevel: 4,
 					})
 				}
 				// Всегда добавляем страну
 				searchRequests = append(searchRequests, domain.BoundarySearchRequest{
-					Index:      loc.Index*100 + 2,
+					Index:      buildSearchRequestIndex(loc.Index, 2),
 					Name:       loc.Country,
 					AdminLevel: 2,
 				})
@@ -318,7 +339,7 @@ func (uc *SearchUseCase) DetectLocationBatch(
 	} else {
 		searchResultsByLocIdx := make(map[int][]domain.BoundarySearchResult)
 		for _, sr := range result.nameBasedResults {
-			locIdx := sr.Index / 100
+			locIdx := extractLocationIndex(sr.Index)
 			searchResultsByLocIdx[locIdx] = append(searchResultsByLocIdx[locIdx], sr)
 		}
 

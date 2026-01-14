@@ -11,6 +11,14 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// WalkingSpeedMps is the average walking speed in meters per second (~5 km/h)
+	WalkingSpeedMps = 1.39
+	// WalkingDistanceMultiplier estimates walking distance as 20% longer than linear distance
+	// to account for streets, turns, and obstacles
+	WalkingDistanceMultiplier = 1.2
+)
+
 type TransportUseCase struct {
 	transportRepo repository.TransportRepository
 	logger        *zap.Logger
@@ -229,8 +237,7 @@ func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
 	}
 
 	// Преобразуем в DTO с расчётом времени ходьбы
-	walkingSpeedMps := 1.39 // ~5 km/h
-	walkingSpeedKmH := walkingSpeedMps * 3.6
+	walkingSpeedKmH := WalkingSpeedMps * 3.6
 	results := make([]dto.PriorityTransportPointResult, len(batchResults))
 	totalStations := 0
 
@@ -238,8 +245,8 @@ func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
 		stations := make([]dto.PriorityTransportStation, 0, len(br.Stations))
 
 		for _, s := range br.Stations {
-			walkingDistance := s.Distance * 1.2
-			walkingTime := walkingDistance / walkingSpeedMps / 60
+			walkingDistance := s.Distance * WalkingDistanceMultiplier
+			walkingTime := walkingDistance / WalkingSpeedMps / 60
 
 			lines := make([]dto.TransportLineInfoEnriched, 0, len(s.Lines))
 			for _, line := range s.Lines {

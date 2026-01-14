@@ -16,6 +16,3 @@ type LocationEnricher interface {
 type BatchLocationEnricher interface {
 	EnrichLocationBatch(ctx context.Context, req dto.EnrichLocationBatchRequest) (*dto.EnrichLocationBatchResponse, error)
 }
-
-// Ensure EnrichedLocationUseCase implements BatchLocationEnricher
-var _ BatchLocationEnricher = (*EnrichedLocationUseCase)(nil)
