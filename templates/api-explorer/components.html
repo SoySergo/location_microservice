@@ -13,7 +13,7 @@
     <div class="instructions">
         <strong>Начало работы:</strong><br>
         1. Выберите метод справа<br>
-        2. Кликните на карту для выбора точки(ек)<br>
+        2. Для большинства методов - кликните на карту<br>
         3. Нажмите "Выполнить" для запроса<br>
         4. Результаты появятся здесь
     </div>
@@ -34,13 +34,125 @@
 {{end}}
 
 {{define "method-cards"}}
-{{range .Methods}}
-<div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
-    <h3>{{.Icon}} {{.Name}}</h3>
-    <p>{{.Description}}</p>
-    <span class="method-type {{if .IsBatch}}batch{{else}}single{{end}}">{{if .IsBatch}}Batch{{else}}Single{{end}}</span>
+<!-- Search & Geocoding -->
+<div class="method-group">
+    <h3 class="group-title">🔍 Search & Geocoding</h3>
+    {{range .Methods}}
+        {{if or (eq .ID "search") (eq .ID "reverse-geocode") (eq .ID "reverse-geocode-batch") (eq .ID "boundary-by-id")}}
+        <div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+            <div class="method-header">
+                <span class="method-icon">{{.Icon}}</span>
+                <span class="method-name">{{.Name}}</span>
+            </div>
+            <p class="method-description">{{.Description}}</p>
+            <div class="method-badges">
+                <span class="badge badge-{{.HTTPMethod}}">{{.HTTPMethod}}</span>
+                {{if .IsBatch}}<span class="badge badge-batch">BATCH</span>{{end}}
+            </div>
+        </div>
+        {{end}}
+    {{end}}
 </div>
-{{end}}
+
+<!-- Location Enrichment -->
+<div class="method-group">
+    <h3 class="group-title">✨ Location Enrichment</h3>
+    {{range .Methods}}
+        {{if or (eq .ID "enrich-location") (eq .ID "enrich-location-batch") (eq .ID "detect-location-batch")}}
+        <div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+            <div class="method-header">
+                <span class="method-icon">{{.Icon}}</span>
+                <span class="method-name">{{.Name}}</span>
+            </div>
+            <p class="method-description">{{.Description}}</p>
+            <div class="method-badges">
+                <span class="badge badge-{{.HTTPMethod}}">{{.HTTPMethod}}</span>
+                {{if .IsBatch}}<span class="badge badge-batch">BATCH</span>{{end}}
+            </div>
+        </div>
+        {{end}}
+    {{end}}
+</div>
+
+<!-- Transport -->
+<div class="method-group">
+    <h3 class="group-title">🚇 Transport</h3>
+    {{range .Methods}}
+        {{if or (eq .ID "transport-nearest") (eq .ID "transport-nearest-batch") (eq .ID "transport-priority") (eq .ID "transport-priority-batch") (eq .ID "station-lines")}}
+        <div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+            <div class="method-header">
+                <span class="method-icon">{{.Icon}}</span>
+                <span class="method-name">{{.Name}}</span>
+            </div>
+            <p class="method-description">{{.Description}}</p>
+            <div class="method-badges">
+                <span class="badge badge-{{.HTTPMethod}}">{{.HTTPMethod}}</span>
+                {{if .IsBatch}}<span class="badge badge-batch">BATCH</span>{{end}}
+            </div>
+        </div>
+        {{end}}
+    {{end}}
+</div>
+
+<!-- POI -->
+<div class="method-group">
+    <h3 class="group-title">📌 POI</h3>
+    {{range .Methods}}
+        {{if or (eq .ID "poi-radius") (eq .ID "poi-categories") (eq .ID "poi-subcategories")}}
+        <div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+            <div class="method-header">
+                <span class="method-icon">{{.Icon}}</span>
+                <span class="method-name">{{.Name}}</span>
+            </div>
+            <p class="method-description">{{.Description}}</p>
+            <div class="method-badges">
+                <span class="badge badge-{{.HTTPMethod}}">{{.HTTPMethod}}</span>
+                {{if .IsBatch}}<span class="badge badge-batch">BATCH</span>{{end}}
+            </div>
+        </div>
+        {{end}}
+    {{end}}
+</div>
+
+<!-- Tiles -->
+<div class="method-group">
+    <h3 class="group-title">🗺️ Tiles</h3>
+    {{range .Methods}}
+        {{if or (eq .ID "tile-boundaries") (eq .ID "tile-transport") (eq .ID "tile-transport-filtered") (eq .ID "tile-poi") (eq .ID "tile-green-spaces") (eq .ID "tile-water") (eq .ID "tile-beaches")}}
+        <div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+            <div class="method-header">
+                <span class="method-icon">{{.Icon}}</span>
+                <span class="method-name">{{.Name}}</span>
+            </div>
+            <p class="method-description">{{.Description}}</p>
+            <div class="method-badges">
+                <span class="badge badge-{{.HTTPMethod}}">{{.HTTPMethod}}</span>
+                {{if .IsBatch}}<span class="badge badge-batch">BATCH</span>{{end}}
+            </div>
+        </div>
+        {{end}}
+    {{end}}
+</div>
+
+<!-- System -->
+<div class="method-group">
+    <h3 class="group-title">📊 System</h3>
+    {{range .Methods}}
+        {{if or (eq .ID "stats") (eq .ID "health")}}
+        <div class="method-card {{if .Active}}active{{end}}" data-method="{{.ID}}">
+            <div class="method-header">
+                <span class="method-icon">{{.Icon}}</span>
+                <span class="method-name">{{.Name}}</span>
+            </div>
+            <p class="method-description">{{.Description}}</p>
+            <div class="method-badges">
+                <span class="badge badge-{{.HTTPMethod}}">{{.HTTPMethod}}</span>
+                {{if .IsBatch}}<span class="badge badge-batch">BATCH</span>{{end}}
+            </div>
+        </div>
+        {{end}}
+    {{end}}
+</div>
 {{end}}
 
 {{define "params-section"}}
