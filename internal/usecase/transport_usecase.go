@@ -11,18 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	// WalkingSpeedMps is the average walking speed in meters per second (~5 km/h)
-	WalkingSpeedMps = 1.39
-	// WalkingDistanceMultiplier estimates walking distance as 20% longer than linear distance
-	// to account for streets, turns, and obstacles
-	WalkingDistanceMultiplier = 1.2
-	// DefaultPriorityTransportRadius is the default search radius for priority transport in meters
-	DefaultPriorityTransportRadius = 1500 // 1.5 km
-	// DefaultPriorityTransportLimit is the default limit of stations per point for priority transport
-	DefaultPriorityTransportLimit = 5
-)
-
 type TransportUseCase struct {
 	transportRepo repository.TransportRepository
 	logger        *zap.Logger
@@ -186,113 +174,6 @@ func (uc *TransportUseCase) BatchGetNearestStations(
 
 	return &dto.BatchNearestTransportResponse{
 		Results: results,
-	}, nil
-}
-
-// GetNearestTransportByPriorityBatch возвращает ближайший транспорт с приоритетом
-// для множества точек одним эффективным запросом к БД.
-// Приоритет: metro/train -> bus/tram (если нет высокоприоритетного в радиусе)
-func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
-	ctx context.Context,
-	req dto.PriorityTransportBatchRequest,
-) (*dto.PriorityTransportBatchResponse, error) {
-	// Validate request
-	if len(req.Points) == 0 {
-		return nil, errors.ErrInvalidRequest
-	}
-
-	for _, p := range req.Points {
-		if !utils.ValidateCoordinates(p.Lat, p.Lon) {
-			return nil, errors.ErrInvalidCoordinates
-		}
-	}
-
-	// Set defaults
-	radius := req.Radius
-	if radius == 0 {
-		radius = DefaultPriorityTransportRadius
-	}
-
-	limit := req.Limit
-	if limit == 0 {
-		limit = DefaultPriorityTransportLimit
-	}
-
-	uc.logger.Info("GetNearestTransportByPriorityBatch",
-		zap.Int("points_count", len(req.Points)),
-		zap.Float64("radius", radius),
-		zap.Int("limit_per_point", limit))
-
-	// Преобразуем DTO в domain
-	domainPoints := make([]domain.TransportSearchPoint, len(req.Points))
-	for i, p := range req.Points {
-		domainPoints[i] = domain.TransportSearchPoint{
-			Lat:   p.Lat,
-			Lon:   p.Lon,
-			Limit: limit,
-		}
-	}
-
-	// Получаем станции одним запросом
-	batchResults, err := uc.transportRepo.GetNearestTransportByPriorityBatch(ctx, domainPoints, radius, limit)
-	if err != nil {
-		uc.logger.Error("Failed to get batch priority transport", zap.Error(err))
-		return nil, err
-	}
-
-	// Преобразуем в DTO с расчётом времени ходьбы
-	walkingSpeedKmH := WalkingSpeedMps * 3.6
-	results := make([]dto.PriorityTransportPointResult, len(batchResults))
-	totalStations := 0
-
-	for i, br := range batchResults {
-		stations := make([]dto.PriorityTransportStation, 0, len(br.Stations))
-
-		for _, s := range br.Stations {
-			walkingDistance := s.Distance * WalkingDistanceMultiplier
-			walkingTime := walkingDistance / WalkingSpeedMps / 60
-
-			lines := make([]dto.TransportLineInfoEnriched, 0, len(s.Lines))
-			for _, line := range s.Lines {
-				lines = append(lines, dto.TransportLineInfoEnriched{
-					ID:    line.ID,
-					Name:  line.Name,
-					Ref:   line.Ref,
-					Type:  line.Type,
-					Color: line.Color,
-				})
-			}
-
-			stations = append(stations, dto.PriorityTransportStation{
-				StationID:       s.StationID,
-				Name:            s.Name,
-				NameEn:          s.NameEn,
-				Type:            s.Type,
-				Lat:             s.Lat,
-				Lon:             s.Lon,
-				LinearDistance:  s.Distance,
-				WalkingDistance: walkingDistance,
-				WalkingTime:     walkingTime,
-				Lines:           lines,
-			})
-		}
-
-		results[i] = dto.PriorityTransportPointResult{
-			PointIndex:  br.PointIndex,
-			SearchPoint: dto.Point{Lat: br.SearchPoint.Lat, Lon: br.SearchPoint.Lon},
-			Stations:    stations,
-		}
-		totalStations += len(stations)
-	}
-
-	return &dto.PriorityTransportBatchResponse{
-		Results: results,
-		Meta: dto.PriorityTransportBatchMeta{
-			TotalPoints:     len(req.Points),
-			TotalStations:   totalStations,
-			RadiusM:         radius,
-			WalkingSpeedKmH: walkingSpeedKmH,
-		},
 	}, nil
 }
 

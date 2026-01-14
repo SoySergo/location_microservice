@@ -9,46 +9,36 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	// DefaultTransportRadius is the default search radius for transport stations in meters
-	DefaultTransportRadius = 1500 // 1.5 km
-	// DefaultTransportLimit is the default number of transport stations per point
-	DefaultTransportLimit = 5
-)
-
 // Ensure EnrichedLocationUseCase implements BatchLocationEnricher interface
 var _ BatchLocationEnricher = (*EnrichedLocationUseCase)(nil)
 
 // EnrichedLocationUseCase - usecase для полного обогащения локаций
 type EnrichedLocationUseCase struct {
-	searchUC    *SearchUseCase    // для DetectLocationBatch
-	transportUC *TransportUseCase // для GetNearestTransportByPriorityBatch
-	logger      *zap.Logger
+	enrichmentDebugUC *EnrichmentDebugUseCase // для EnrichLocationBatch и GetNearestTransportByPriorityBatch
+	logger            *zap.Logger
 }
 
 // NewEnrichedLocationUseCase создает новый EnrichedLocationUseCase
 func NewEnrichedLocationUseCase(
-	searchUC *SearchUseCase,
-	transportUC *TransportUseCase,
+	enrichmentDebugUC *EnrichmentDebugUseCase,
 	logger *zap.Logger,
 ) *EnrichedLocationUseCase {
 	return &EnrichedLocationUseCase{
-		searchUC:    searchUC,
-		transportUC: transportUC,
-		logger:      logger,
+		enrichmentDebugUC: enrichmentDebugUC,
+		logger:            logger,
 	}
 }
 
 // EnrichLocationBatch обогащает пачку локаций параллельно.
 //
 // Архитектура параллельной обработки:
-// - Горутина 1: DetectLocationBatch для ВСЕХ локаций → возвращает enriched location с ID границ
-// - Горутина 2: GetNearestTransportByPriorityBatch только для IsVisible=true → возвращает транспорт
+// - Горутина 1: EnrichLocationBatch (из EnrichmentDebugUseCase) для ВСЕХ локаций → возвращает enriched location с ID границ
+// - Горутина 2: GetNearestTransportByPriorityBatch (из EnrichmentDebugUseCase) только для IsVisible=true → возвращает транспорт
 // - Обе горутины работают параллельно с sync.WaitGroup
 // - Результаты объединяются после завершения обеих горутин
 //
 // Поведение при ошибках:
-// - Ошибка DetectLocationBatch прерывает весь процесс (критическая)
+// - Ошибка EnrichLocationBatch прерывает весь процесс (критическая)
 // - Ошибка транспорта не прерывает обработку, результаты возвращаются без транспорта (graceful degradation)
 //
 // Разделение локаций:
@@ -81,18 +71,18 @@ func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 
 	// Структуры для результатов горутин
 	var wg sync.WaitGroup
-	var detectResult *dto.DetectLocationBatchResponse
+	var enrichResult *dto.EnrichmentDebugLocationBatchResponse
 	var transportResult *dto.PriorityTransportBatchResponse
-	var detectErr, transportErr error
+	var enrichErr, transportErr error
 
-	// Горутина 1: DetectLocationBatch для ВСЕХ локаций
+	// Горутина 1: EnrichLocationBatch для ВСЕХ локаций
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		detectReq := dto.DetectLocationBatchRequest{
+		enrichReq := dto.EnrichmentDebugLocationBatchRequest{
 			Locations: req.Locations,
 		}
-		detectResult, detectErr = uc.searchUC.DetectLocationBatch(ctx, detectReq)
+		enrichResult, enrichErr = uc.enrichmentDebugUC.EnrichLocationBatch(ctx, enrichReq)
 	}()
 
 	// Горутина 2: GetNearestTransportByPriorityBatch только для visible
@@ -112,10 +102,10 @@ func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 
 			transportReq := dto.PriorityTransportBatchRequest{
 				Points: points,
-				Radius: DefaultTransportRadius,
-				Limit:  DefaultTransportLimit,
+				Radius: 1500, // 1.5 km по умолчанию
+				Limit:  5,    // 5 станций на точку
 			}
-			transportResult, transportErr = uc.transportUC.GetNearestTransportByPriorityBatch(ctx, transportReq)
+			transportResult, transportErr = uc.enrichmentDebugUC.GetNearestTransportByPriorityBatch(ctx, transportReq)
 		}()
 	}
 
@@ -123,20 +113,20 @@ func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 	wg.Wait()
 
 	// Обрабатываем ошибки
-	if detectErr != nil {
-		uc.logger.Error("DetectLocationBatch failed", zap.Error(detectErr))
-		return nil, detectErr
+	if enrichErr != nil {
+		uc.logger.Error("EnrichLocationBatch failed", zap.Error(enrichErr))
+		return nil, enrichErr
 	}
 
 	// Объединяем результаты
 	results := make([]dto.EnrichedLocationResult, len(req.Locations))
 
-	// Копируем результаты детекции
-	for i, dr := range detectResult.Results {
+	// Копируем результаты обогащения
+	for i, er := range enrichResult.Results {
 		results[i] = dto.EnrichedLocationResult{
-			Index:            dr.Index,
-			EnrichedLocation: dr.EnrichedLocation,
-			Error:            dr.Error,
+			Index:            er.Index,
+			EnrichedLocation: er.EnrichedLocation,
+			Error:            er.Error,
 		}
 	}
 
