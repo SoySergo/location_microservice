@@ -311,6 +311,30 @@ func convertToNearestStations(stations []dto.PriorityTransportStation) []domain.
 	return result
 }
 
+// DetectLocationBatch - прокси к SearchUseCase.DetectLocationBatch
+func (uc *EnrichedLocationUseCase) DetectLocationBatch(
+	ctx context.Context,
+	req dto.DetectLocationBatchRequest,
+) (*dto.DetectLocationBatchResponse, error) {
+	return uc.searchUC.DetectLocationBatch(ctx, req)
+}
+
+// GetPriorityTransport - прокси к TransportUseCase.GetNearestTransportByPriority
+func (uc *EnrichedLocationUseCase) GetPriorityTransport(
+	ctx context.Context,
+	req dto.PriorityTransportRequest,
+) (*dto.PriorityTransportResponse, error) {
+	return uc.transportUC.GetNearestTransportByPriority(ctx, req)
+}
+
+// GetPriorityTransportBatch - прокси к TransportUseCase.GetNearestTransportByPriorityBatch
+func (uc *EnrichedLocationUseCase) GetPriorityTransportBatch(
+	ctx context.Context,
+	req dto.PriorityTransportBatchRequest,
+) (*dto.PriorityTransportBatchResponse, error) {
+	return uc.transportUC.GetNearestTransportByPriorityBatch(ctx, req)
+}
+
 // Compile-time check that EnrichedLocationUseCase implements LocationEnricher
 var _ LocationEnricher = (*EnrichedLocationUseCase)(nil)
 
