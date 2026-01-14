@@ -234,7 +234,7 @@ func (uc *TransportUseCase) GetNearestTransportByPriority(
 	req dto.PriorityTransportRequest,
 ) (*dto.PriorityTransportResponse, error) {
 	// Validate coordinates
-	if req.Lat < -90 || req.Lat > 90 || req.Lon < -180 || req.Lon > 180 {
+	if !utils.ValidateCoordinates(req.Lat, req.Lon) {
 		return nil, errors.ErrInvalidCoordinates
 	}
 
@@ -333,7 +333,7 @@ func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
 	}
 
 	for _, p := range req.Points {
-		if p.Lat < -90 || p.Lat > 90 || p.Lon < -180 || p.Lon > 180 {
+		if !utils.ValidateCoordinates(p.Lat, p.Lon) {
 			return nil, errors.ErrInvalidCoordinates
 		}
 	}
