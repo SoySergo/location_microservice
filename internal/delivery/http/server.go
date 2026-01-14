@@ -26,7 +26,6 @@ type Server struct {
 	tileHandler             *handler.TileHandler
 	poiTileHandler          *handler.POITileHandler
 	statsHandler            *handler.StatsHandler
-	enrichmentDebugHandler  *handler.EnrichmentDebugHandler
 	apiExplorerHandler      *handler.APIExplorerHandler
 	enrichedLocationHandler *handler.EnrichedLocationHandler
 }
@@ -41,7 +40,6 @@ func NewServer(
 	tileHandler *handler.TileHandler,
 	poiTileHandler *handler.POITileHandler,
 	statsHandler *handler.StatsHandler,
-	enrichmentDebugHandler *handler.EnrichmentDebugHandler,
 	enrichedLocationHandler *handler.EnrichedLocationHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
@@ -68,7 +66,6 @@ func NewServer(
 		tileHandler:             tileHandler,
 		poiTileHandler:          poiTileHandler,
 		statsHandler:            statsHandler,
-		enrichmentDebugHandler:  enrichmentDebugHandler,
 		apiExplorerHandler:      apiExplorerHandler,
 		enrichedLocationHandler: enrichedLocationHandler,
 	}
@@ -168,21 +165,8 @@ func (s *Server) setupRoutes() {
 	api.Get("/transport/priority", s.enrichedLocationHandler.GetPriorityTransport)
 	api.Post("/transport/priority/batch", s.enrichedLocationHandler.GetPriorityTransportBatch)
 
-	// Debug/Test routes - для тестирования логики обогащения
-	debug := api.Group("/debug")
-	debug.Post("/enrichment/transport", s.enrichmentDebugHandler.GetNearestTransportEnriched)
-	debug.Get("/enrichment/transport", s.enrichmentDebugHandler.GetNearestTransportEnrichedGET)
-	debug.Post("/enrichment/transport/batch", s.enrichmentDebugHandler.GetNearestTransportEnrichedBatch)
-	debug.Post("/enrichment/location", s.enrichmentDebugHandler.EnrichLocation)
-	debug.Get("/enrichment/location", s.enrichmentDebugHandler.EnrichLocationGET)
-	debug.Post("/enrichment/location/batch", s.enrichmentDebugHandler.EnrichLocationBatch)
-
-	// Priority Transport routes - транспорт с приоритетом metro/train -> bus/tram
-	debug.Get("/transport/priority", s.enrichmentDebugHandler.GetPriorityTransport)
-	debug.Post("/transport/priority", s.enrichmentDebugHandler.GetPriorityTransportPOST)
-	debug.Post("/transport/priority/batch", s.enrichmentDebugHandler.GetPriorityTransportBatch)
-
 	// Mapbox config endpoint for debug map UI
+	debug := api.Group("/debug")
 	debug.Get("/config/mapbox", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"token": s.config.Mapbox.AccessToken,
