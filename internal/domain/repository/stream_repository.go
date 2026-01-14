@@ -11,8 +11,14 @@ type StreamRepository interface {
 	// ConsumeStream читает сообщения из стрима
 	ConsumeStream(ctx context.Context, stream, group, consumer string) (<-chan domain.StreamMessage, error)
 
+	// ConsumeBatch читает до maxCount сообщений из стрима без блокировки
+	ConsumeBatch(ctx context.Context, stream, group, consumer string, maxCount int) ([]domain.StreamMessage, error)
+
 	// AckMessage подтверждает обработку сообщения
 	AckMessage(ctx context.Context, stream, group, messageID string) error
+
+	// AckMessages подтверждает обработку нескольких сообщений
+	AckMessages(ctx context.Context, stream, group string, messageIDs []string) error
 
 	// CreateConsumerGroup создаёт consumer group
 	CreateConsumerGroup(ctx context.Context, stream, group string) error

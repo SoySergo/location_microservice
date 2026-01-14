@@ -110,6 +110,7 @@ type LocationDoneEventExtended struct {
 
 // StreamMessage - сообщение из Redis Stream
 type StreamMessage struct {
-	ID   string
-	Data string
+	ID     string
+	Stream string
+	Data   map[string]interface{}
 }
