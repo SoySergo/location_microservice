@@ -173,14 +173,14 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 
 	// 5. Публикуем результаты в stream:location:done
 	publishErrors := 0
-	for i, result := range resp.Results {
-		if i >= len(events) {
+	for _, result := range resp.Results {
+		if result.Index >= len(events) {
 			logger.Error("Result index exceeds events count - this should not happen",
-				zap.Int("result_index", i),
+				zap.Int("result_index", result.Index),
 				zap.Int("events_count", len(events)))
-			break
+			continue
 		}
-		event := events[i]
+		event := events[result.Index]
 
 		doneEvent := w.buildDoneEvent(event.PropertyID, result)
 
