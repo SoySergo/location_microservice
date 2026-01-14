@@ -10,6 +10,13 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// DefaultTransportRadius - радиус поиска транспорта по умолчанию (метры)
+	DefaultTransportRadius = 1500 // 1.5 km
+	// DefaultTransportLimit - максимальное количество станций на точку
+	DefaultTransportLimit = 5
+)
+
 // EnrichedLocationUseCase - usecase для полного обогащения локаций
 type EnrichedLocationUseCase struct {
 	searchUC    *SearchUseCase    // для DetectLocationBatch
@@ -81,25 +88,18 @@ func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 			defer wg.Done()
 
 			// Формируем точки для поиска транспорта
-			points := make([]dto.Point, len(visibleLocations))
+			points := make([]dto.PriorityTransportPoint, len(visibleLocations))
 			for i, loc := range visibleLocations {
-				points[i] = dto.Point{
+				points[i] = dto.PriorityTransportPoint{
 					Lat: *loc.Latitude,
 					Lon: *loc.Longitude,
 				}
 			}
 
 			transportReq := dto.PriorityTransportBatchRequest{
-				Points: make([]dto.PriorityTransportPoint, len(points)),
-				Radius: 1500, // 1.5 km по умолчанию
-				Limit:  5,    // 5 станций на точку
-			}
-			// Convert Point to PriorityTransportPoint
-			for i, p := range points {
-				transportReq.Points[i] = dto.PriorityTransportPoint{
-					Lat: p.Lat,
-					Lon: p.Lon,
-				}
+				Points: points,
+				Radius: DefaultTransportRadius,
+				Limit:  DefaultTransportLimit,
 			}
 
 			transportResult, transportErr = uc.transportUC.GetNearestTransportByPriorityBatch(ctx, transportReq)
