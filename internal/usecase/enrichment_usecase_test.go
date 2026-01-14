@@ -2,16 +2,12 @@ package usecase_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"go.uber.org/zap"
 
 	"github.com/location-microservice/internal/domain"
-	"github.com/location-microservice/internal/usecase"
 )
 
 // MockBoundaryRepository is a mock of BoundaryRepository

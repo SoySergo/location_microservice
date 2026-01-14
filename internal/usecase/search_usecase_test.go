@@ -20,12 +20,15 @@ type MockCacheRepository struct {
 	mock.Mock
 }
 
-func (m *MockCacheRepository) Get(ctx context.Context, key string) (string, error) {
+func (m *MockCacheRepository) Get(ctx context.Context, key string) ([]byte, error) {
 	args := m.Called(ctx, key)
-	return args.String(0), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]byte), args.Error(1)
 }
 
-func (m *MockCacheRepository) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+func (m *MockCacheRepository) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	args := m.Called(ctx, key, value, ttl)
 	return args.Error(0)
 }
@@ -38,6 +41,32 @@ func (m *MockCacheRepository) Delete(ctx context.Context, key string) error {
 func (m *MockCacheRepository) Exists(ctx context.Context, key string) (bool, error) {
 	args := m.Called(ctx, key)
 	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockCacheRepository) GetTile(ctx context.Context, z, x, y int) ([]byte, error) {
+	args := m.Called(ctx, z, x, y)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]byte), args.Error(1)
+}
+
+func (m *MockCacheRepository) SetTile(ctx context.Context, z, x, y int, data []byte, ttl time.Duration) error {
+	args := m.Called(ctx, z, x, y, data, ttl)
+	return args.Error(0)
+}
+
+func (m *MockCacheRepository) GetStats(ctx context.Context) (*domain.Statistics, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Statistics), args.Error(1)
+}
+
+func (m *MockCacheRepository) SetStats(ctx context.Context, stats *domain.Statistics, ttl time.Duration) error {
+	args := m.Called(ctx, stats, ttl)
+	return args.Error(0)
 }
 
 func TestSearchUseCase_DetectLocationBatch(t *testing.T) {

@@ -35,7 +35,7 @@ func TestTransportUseCase_GetNearestTransportByPriority(t *testing.T) {
 						ID:    1,
 						Name:  "L1",
 						Type:  "metro",
-						Color: "#E32019",
+						Color: ptrString("#E32019"),
 					},
 				},
 			},
@@ -152,10 +152,9 @@ func TestTransportUseCase_GetNearestTransportByPriorityBatch(t *testing.T) {
 		batchResults := []domain.BatchTransportResult{
 			{
 				PointIndex: 0,
-				SearchPoint: domain.TransportSearchPoint{
-					Lat:   41.3851,
-					Lon:   2.1734,
-					Limit: 3,
+				SearchPoint: domain.Coordinate{
+					Lat: 41.3851,
+					Lon: 2.1734,
 				},
 				Stations: []domain.NearestTransportWithLines{
 					{
@@ -177,10 +176,9 @@ func TestTransportUseCase_GetNearestTransportByPriorityBatch(t *testing.T) {
 			},
 			{
 				PointIndex: 1,
-				SearchPoint: domain.TransportSearchPoint{
-					Lat:   48.8566,
-					Lon:   2.3522,
-					Limit: 3,
+				SearchPoint: domain.Coordinate{
+					Lat: 48.8566,
+					Lon: 2.3522,
 				},
 				Stations: []domain.NearestTransportWithLines{
 					{
@@ -267,7 +265,7 @@ func TestTransportUseCase_GetNearestTransportByPriorityBatch(t *testing.T) {
 			Return([]domain.BatchTransportResult{
 				{
 					PointIndex:  0,
-					SearchPoint: domain.TransportSearchPoint{Lat: 41.3851, Lon: 2.1734, Limit: 3},
+					SearchPoint: domain.Coordinate{Lat: 41.3851, Lon: 2.1734},
 					Stations:    []domain.NearestTransportWithLines{},
 				},
 			}, nil)

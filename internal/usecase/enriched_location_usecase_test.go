@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
 	"github.com/location-microservice/internal/domain"
@@ -65,10 +66,6 @@ func TestEnrichedLocationUseCase_EnrichLocationBatch_Success(t *testing.T) {
 	transportUC := usecase.NewTransportUseCase(mockTransport, logger)
 	uc := usecase.NewEnrichedLocationUseCase(searchUC, transportUC, logger)
 
-	searchUC := usecase.NewSearchUseCase(mockBoundary, mockCache, logger, 1*time.Hour)
-	transportUC := usecase.NewTransportUseCase(mockTransport, logger)
-	uc := usecase.NewEnrichedLocationUseCase(searchUC, transportUC, logger)
-
 	// Input: one visible location
 	locations := []dto.LocationInput{
 		{
@@ -100,10 +97,9 @@ func TestEnrichedLocationUseCase_EnrichLocationBatch_Success(t *testing.T) {
 	batchResults := []domain.BatchTransportResult{
 		{
 			PointIndex: 0,
-			SearchPoint: domain.TransportSearchPoint{
-				Lat:   41.3851,
-				Lon:   2.1734,
-				Limit: 5,
+			SearchPoint: domain.Coordinate{
+				Lat: 41.3851,
+				Lon: 2.1734,
 			},
 			Stations: []domain.NearestTransportWithLines{
 				{
