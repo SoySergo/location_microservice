@@ -20,14 +20,15 @@ type Server struct {
 	logger *zap.Logger
 
 	// Handlers
-	searchHandler          *handler.SearchHandler
-	transportHandler       *handler.TransportHandler
-	poiHandler             *handler.POIHandler
-	tileHandler            *handler.TileHandler
-	poiTileHandler         *handler.POITileHandler
-	statsHandler           *handler.StatsHandler
-	enrichmentDebugHandler *handler.EnrichmentDebugHandler
-	apiExplorerHandler     *handler.APIExplorerHandler
+	searchHandler           *handler.SearchHandler
+	transportHandler        *handler.TransportHandler
+	poiHandler              *handler.POIHandler
+	tileHandler             *handler.TileHandler
+	poiTileHandler          *handler.POITileHandler
+	statsHandler            *handler.StatsHandler
+	enrichmentDebugHandler  *handler.EnrichmentDebugHandler
+	apiExplorerHandler      *handler.APIExplorerHandler
+	enrichedLocationHandler *handler.EnrichedLocationHandler
 }
 
 // NewServer - создание нового HTTP сервера
@@ -41,6 +42,7 @@ func NewServer(
 	poiTileHandler *handler.POITileHandler,
 	statsHandler *handler.StatsHandler,
 	enrichmentDebugHandler *handler.EnrichmentDebugHandler,
+	enrichedLocationHandler *handler.EnrichedLocationHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
 		AppName:      "Location Microservice",
@@ -57,17 +59,18 @@ func NewServer(
 	}
 
 	s := &Server{
-		app:                    app,
-		config:                 cfg,
-		logger:                 logger,
-		searchHandler:          searchHandler,
-		transportHandler:       transportHandler,
-		poiHandler:             poiHandler,
-		tileHandler:            tileHandler,
-		poiTileHandler:         poiTileHandler,
-		statsHandler:           statsHandler,
-		enrichmentDebugHandler: enrichmentDebugHandler,
-		apiExplorerHandler:     apiExplorerHandler,
+		app:                     app,
+		config:                  cfg,
+		logger:                  logger,
+		searchHandler:           searchHandler,
+		transportHandler:        transportHandler,
+		poiHandler:              poiHandler,
+		tileHandler:             tileHandler,
+		poiTileHandler:          poiTileHandler,
+		statsHandler:            statsHandler,
+		enrichmentDebugHandler:  enrichmentDebugHandler,
+		apiExplorerHandler:      apiExplorerHandler,
+		enrichedLocationHandler: enrichedLocationHandler,
 	}
 
 	s.setupMiddlewares()
@@ -155,6 +158,15 @@ func (s *Server) setupRoutes() {
 
 	// Radius tiles - комплексный endpoint для получения всех данных в радиусе
 	api.Post("/radius/tiles.pbf", s.tileHandler.GetRadiusTiles)
+
+	// Location Enrichment routes (новые)
+	api.Post("/locations/enrich", s.enrichedLocationHandler.EnrichSingleLocation)
+	api.Post("/locations/enrich/batch", s.enrichedLocationHandler.EnrichLocationBatch)
+	api.Post("/locations/detect/batch", s.enrichedLocationHandler.DetectLocationBatch)
+
+	// Priority Transport routes (новые - вместо /debug/)
+	api.Get("/transport/priority", s.enrichedLocationHandler.GetPriorityTransport)
+	api.Post("/transport/priority/batch", s.enrichedLocationHandler.GetPriorityTransportBatch)
 
 	// Debug/Test routes - для тестирования логики обогащения
 	debug := api.Group("/debug")
