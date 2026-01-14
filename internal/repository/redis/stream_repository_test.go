@@ -89,10 +89,15 @@ func TestStreamRepository_PublishToStream(t *testing.T) {
 
 	// Create test event
 	propertyID := uuid.New()
+	visible := true
 	event := &domain.LocationDoneEvent{
 		PropertyID: propertyID,
 		EnrichedLocation: &domain.EnrichedLocation{
-			CityID: ptrInt64(100),
+			IsAddressVisible: &visible,
+			City: &domain.BoundaryInfo{
+				ID:   100,
+				Name: "Barcelona",
+			},
 		},
 		NearestTransport: []domain.NearestStation{
 			{
@@ -100,7 +105,10 @@ func TestStreamRepository_PublishToStream(t *testing.T) {
 				Name:      "Test Station",
 				Type:      "metro",
 				Distance:  350.5,
-				LineIDs:   []int64{3, 4},
+				Lines: []domain.TransportLineInfo{
+					{ID: 3, Name: "L3"},
+					{ID: 4, Name: "L4"},
+				},
 			},
 		},
 	}
@@ -128,7 +136,8 @@ func TestStreamRepository_PublishToStream(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, propertyID, receivedEvent.PropertyID)
 	assert.NotNil(t, receivedEvent.EnrichedLocation)
-	assert.Equal(t, int64(100), *receivedEvent.EnrichedLocation.CityID)
+	assert.NotNil(t, receivedEvent.EnrichedLocation.City)
+	assert.Equal(t, int64(100), receivedEvent.EnrichedLocation.City.ID)
 	assert.Len(t, receivedEvent.NearestTransport, 1)
 	assert.Equal(t, "Test Station", receivedEvent.NearestTransport[0].Name)
 }
@@ -179,8 +188,11 @@ func TestStreamRepository_ConsumeStream(t *testing.T) {
 		assert.NotEmpty(t, msg.ID)
 
 		// Verify message content
+		dataStr, ok := msg.Data["data"].(string)
+		require.True(t, ok)
+		
 		var receivedEvent domain.LocationEnrichEvent
-		err = json.Unmarshal([]byte(msg.Data), &receivedEvent)
+		err = json.Unmarshal([]byte(dataStr), &receivedEvent)
 		require.NoError(t, err)
 		assert.Equal(t, propertyID, receivedEvent.PropertyID)
 		assert.Equal(t, "Spain", receivedEvent.Country)

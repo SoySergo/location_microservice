@@ -97,18 +97,11 @@ func (r *streamRepository) ConsumeStream(ctx context.Context, stream, group, con
 				// Обрабатываем полученные сообщения
 				for _, stream := range result {
 					for _, msg := range stream.Messages {
-						// Извлекаем JSON данные из поля "data"
-						data, ok := msg.Values["data"].(string)
-						if !ok {
-							r.logger.Warn("Message does not contain 'data' field",
-								zap.String("message_id", msg.ID))
-							continue
-						}
-
 						select {
 						case msgChan <- domain.StreamMessage{
-							ID:   msg.ID,
-							Data: data,
+							ID:     msg.ID,
+							Stream: stream.Stream,
+							Data:   msg.Values,
 						}:
 							r.logger.Debug("Message sent to channel",
 								zap.String("message_id", msg.ID))
@@ -139,6 +132,56 @@ func (r *streamRepository) AckMessage(ctx context.Context, stream, group, messag
 	r.logger.Debug("Message acknowledged",
 		zap.String("message_id", messageID))
 	return nil
+}
+
+// ConsumeBatch читает до maxCount сообщений из стрима без блокировки
+// Возвращает slice сообщений (может быть пустым если очередь пуста)
+func (r *streamRepository) ConsumeBatch(
+	ctx context.Context,
+	stream, group, consumer string,
+	maxCount int,
+) ([]domain.StreamMessage, error) {
+	// Используем XREADGROUP с COUNT и BLOCK=0 (неблокирующий)
+	result, err := r.client.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group:    group,
+		Consumer: consumer,
+		Streams:  []string{stream, ">"},
+		Count:    int64(maxCount),
+		Block:    0, // неблокирующий режим
+	}).Result()
+
+	if err != nil {
+		if err == redis.Nil {
+			// Нет сообщений - возвращаем пустой slice
+			return []domain.StreamMessage{}, nil
+		}
+		return nil, fmt.Errorf("failed to read from stream: %w", err)
+	}
+
+	var messages []domain.StreamMessage
+	for _, stream := range result {
+		for _, msg := range stream.Messages {
+			messages = append(messages, domain.StreamMessage{
+				ID:     msg.ID,
+				Stream: stream.Stream,
+				Data:   msg.Values,
+			})
+		}
+	}
+
+	return messages, nil
+}
+
+// AckMessages подтверждает обработку нескольких сообщений
+func (r *streamRepository) AckMessages(
+	ctx context.Context,
+	stream, group string,
+	messageIDs []string,
+) error {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+	return r.client.XAck(ctx, stream, group, messageIDs...).Err()
 }
 
 // PublishToStream публикует сообщение в стрим
