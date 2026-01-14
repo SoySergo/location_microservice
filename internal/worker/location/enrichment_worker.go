@@ -127,7 +127,11 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 				zap.String("message_id", msg.ID),
 				zap.Error(err))
 			// ACK битое сообщение чтобы не застревало
-			_ = w.streamRepo.AckMessage(ctx, domain.StreamLocationEnrich, w.ConsumerGroup(), msg.ID)
+			if ackErr := w.streamRepo.AckMessage(ctx, domain.StreamLocationEnrich, w.ConsumerGroup(), msg.ID); ackErr != nil {
+				logger.Error("Failed to ACK malformed message",
+					zap.String("message_id", msg.ID),
+					zap.Error(ackErr))
+			}
 			continue
 		}
 
@@ -168,8 +172,12 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 	}
 
 	// 5. Публикуем результаты в stream:location:done
+	publishErrors := 0
 	for i, result := range resp.Results {
 		if i >= len(events) {
+			logger.Error("Result index exceeds events count - this should not happen",
+				zap.Int("result_index", i),
+				zap.Int("events_count", len(events)))
 			break
 		}
 		event := events[i]
@@ -177,6 +185,7 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 		doneEvent := w.buildDoneEvent(event.PropertyID, result)
 
 		if err := w.streamRepo.PublishToStream(ctx, domain.StreamLocationDone, doneEvent); err != nil {
+			publishErrors++
 			logger.Error("Failed to publish done event",
 				zap.String("property_id", event.PropertyID.String()),
 				zap.Error(err))
@@ -185,15 +194,21 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 	}
 
 	// 6. ACK всех обработанных сообщений
+	// Note: Мы ACK'аем все сообщения даже если некоторые публикации упали,
+	// так как повторная обработка не решит проблему с публикацией.
+	// Неопубликованные результаты можно отследить по метрикам.
 	if err := w.streamRepo.AckMessages(ctx, domain.StreamLocationEnrich, w.ConsumerGroup(), messageIDs); err != nil {
-		logger.Error("Failed to ack messages", zap.Error(err))
-		// Не критично - сообщения будут переобработаны
+		logger.Error("Failed to ack messages - they may be reprocessed",
+			zap.Int("message_count", len(messageIDs)),
+			zap.Error(err))
+		// Не критично - сообщения будут переобработаны, но это приведет к дублированию
 	}
 
 	logger.Info("Batch processed successfully",
 		zap.Int("processed", len(events)),
 		zap.Int("success", resp.Meta.SuccessCount),
-		zap.Int("errors", resp.Meta.ErrorCount))
+		zap.Int("errors", resp.Meta.ErrorCount),
+		zap.Int("publish_errors", publishErrors))
 
 	return len(messages), nil
 }
