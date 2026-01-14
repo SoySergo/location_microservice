@@ -174,7 +174,6 @@ func (uc *EnrichedLocationUseCase) EnrichLocation(
 	event *domain.LocationEnrichEvent,
 ) (*domain.LocationDoneEvent, error) {
 	// Конвертируем event в batch request с одним элементом
-	isVisible := event.IsVisible
 	input := dto.LocationInput{
 		Index:        0,
 		Country:      event.Country,
@@ -185,7 +184,7 @@ func (uc *EnrichedLocationUseCase) EnrichLocation(
 		Neighborhood: event.Neighborhood,
 		Latitude:     event.Latitude,
 		Longitude:    event.Longitude,
-		IsVisible:    isVisible,
+		IsVisible:    event.IsVisible,
 	}
 
 	req := dto.EnrichLocationBatchRequest{
