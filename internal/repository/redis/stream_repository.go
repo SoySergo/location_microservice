@@ -134,20 +134,55 @@ func (r *streamRepository) AckMessage(ctx context.Context, stream, group, messag
 	return nil
 }
 
-// ConsumeBatch читает до maxCount сообщений из стрима без блокировки
-// Возвращает slice сообщений (может быть пустым если очередь пуста)
+// ConsumeBatch читает до maxCount сообщений из стрима
+// Сначала пытается забрать pending сообщения, затем читает новые
 func (r *streamRepository) ConsumeBatch(
 	ctx context.Context,
 	stream, group, consumer string,
 	maxCount int,
 ) ([]domain.StreamMessage, error) {
-	// Используем XREADGROUP с COUNT и BLOCK=0 (неблокирующий)
+	// Сначала пробуем забрать pending сообщения (от crashed consumers)
+	// XAUTOCLAIM автоматически переназначает сообщения которые висят дольше minIdleTime
+	minIdleTime := 30 * time.Second // сообщения висящие более 30 сек считаем "зависшими"
+
+	claimResult, _, err := r.client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+		Stream:   stream,
+		Group:    group,
+		Consumer: consumer,
+		MinIdle:  minIdleTime,
+		Start:    "0-0", // начинаем с самого начала pending list
+		Count:    int64(maxCount),
+	}).Result()
+
+	if err != nil && err != redis.Nil {
+		r.logger.Debug("XAutoClaim failed, trying regular read",
+			zap.String("stream", stream),
+			zap.Error(err))
+	}
+
+	// Если получили pending сообщения - возвращаем их
+	if len(claimResult) > 0 {
+		var messages []domain.StreamMessage
+		for _, msg := range claimResult {
+			messages = append(messages, domain.StreamMessage{
+				ID:     msg.ID,
+				Stream: stream,
+				Data:   msg.Values,
+			})
+		}
+		r.logger.Debug("Claimed pending messages",
+			zap.String("stream", stream),
+			zap.Int("count", len(messages)))
+		return messages, nil
+	}
+
+	// Читаем новые сообщения с коротким таймаутом
 	result, err := r.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    group,
 		Consumer: consumer,
 		Streams:  []string{stream, ">"},
 		Count:    int64(maxCount),
-		Block:    0, // неблокирующий режим
+		Block:    time.Millisecond, // короткий таймаут для неблокирующего чтения
 	}).Result()
 
 	if err != nil {
@@ -159,11 +194,11 @@ func (r *streamRepository) ConsumeBatch(
 	}
 
 	var messages []domain.StreamMessage
-	for _, stream := range result {
-		for _, msg := range stream.Messages {
+	for _, s := range result {
+		for _, msg := range s.Messages {
 			messages = append(messages, domain.StreamMessage{
 				ID:     msg.ID,
-				Stream: stream.Stream,
+				Stream: s.Stream,
 				Data:   msg.Values,
 			})
 		}

@@ -165,13 +165,13 @@ func (s *Server) setupRoutes() {
 	api.Get("/transport/priority", s.enrichedLocationHandler.GetPriorityTransport)
 	api.Post("/transport/priority/batch", s.enrichedLocationHandler.GetPriorityTransportBatch)
 
-	// Mapbox config endpoint for debug map UI
-	debug := api.Group("/debug")
-	debug.Get("/config/mapbox", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"token": s.config.Mapbox.AccessToken,
-		})
-	})
+	// // Mapbox config endpoint for debug map UI
+	// debug := api.Group("/debug")
+	// debug.Get("/config/mapbox", func(c *fiber.Ctx) error {
+	// 	return c.JSON(fiber.Map{
+	// 		"token": s.config.Mapbox.AccessToken,
+	// 	})
+	// })
 
 	// Stats
 	api.Get("/stats", s.statsHandler.GetStatistics)

@@ -88,8 +88,6 @@ make swagger-serve
 Откроется Swagger UI на http://localhost:8081
 
 
-Переделать воркер (берём пачку до 50 штук -> находим адрес, обогащаем -> пушим в очередь готовых -> Возвращаемся)
-
 ### INDEX OSMDB:
 
 -- Index for administrative boundaries

@@ -12,9 +12,9 @@ import (
 
 const (
 	// DefaultTransportRadius - радиус поиска транспорта по умолчанию (метры)
-	DefaultTransportRadius = 1500 // 1.5 km
+	DefaultTransportRadius = 1100 // 1.1 km
 	// DefaultTransportLimit - максимальное количество станций на точку
-	DefaultTransportLimit = 5
+	DefaultTransportLimit = 2
 )
 
 // EnrichedLocationUseCase - usecase для полного обогащения локаций
@@ -58,8 +58,7 @@ func (uc *EnrichedLocationUseCase) EnrichLocationBatch(
 	var visibleIndices []int // индексы visible локаций для маппинга результатов
 
 	for i, loc := range req.Locations {
-		if loc.IsVisible != nil && *loc.IsVisible &&
-			loc.Latitude != nil && loc.Longitude != nil {
+		if loc.Latitude != nil && loc.Longitude != nil {
 			visibleLocations = append(visibleLocations, loc)
 			visibleIndices = append(visibleIndices, i)
 		}

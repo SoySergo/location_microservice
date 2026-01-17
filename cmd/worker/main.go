@@ -123,12 +123,12 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	<-sigChan
-	log.Info("Received shutdown signal")
+	log.Info("Received shutdown signal, initiating graceful shutdown...")
 
-	// Cancel context to stop workers
+	// Отменяем контекст - это сигнализирует воркерам о необходимости остановки
 	cancel()
 
-	// Stop worker manager
+	// Ждём завершения воркеров
 	if err := workerManager.Stop(); err != nil {
 		log.Error("Error stopping workers", zap.Error(err))
 	}

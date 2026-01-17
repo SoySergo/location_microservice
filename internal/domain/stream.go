@@ -47,6 +47,10 @@ type EnrichedLocation struct {
 	City             *BoundaryInfo `json:"city,omitempty"`
 	District         *BoundaryInfo `json:"district,omitempty"`
 	Neighborhood     *BoundaryInfo `json:"neighborhood,omitempty"`
+	Street           *string       `json:"street,omitempty"`
+	HouseNumber      *string       `json:"house_number,omitempty"`
+	Latitude         *float64      `json:"latitude,omitempty"`
+	Longitude        *float64      `json:"longitude,omitempty"`
 	IsAddressVisible *bool         `json:"is_address_visible,omitempty"`
 }
 

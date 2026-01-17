@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/location-microservice/internal/domain"
 	"github.com/location-microservice/internal/domain/repository"
 	"github.com/location-microservice/internal/usecase"
@@ -17,7 +16,7 @@ import (
 )
 
 const (
-	maxBatchSize    = 20                      // максимум сообщений за раз
+	maxBatchSize    = 20                     // максимум сообщений за раз
 	emptyQueueSleep = 100 * time.Millisecond // пауза если очередь пуста
 )
 
@@ -58,37 +57,75 @@ func (w *LocationEnrichmentWorker) Start(ctx context.Context) error {
 		zap.String("consumer_name", w.consumerName),
 		zap.Int("max_batch_size", maxBatchSize))
 
-	// Создаем consumer group
-	if err := w.streamRepo.CreateConsumerGroup(ctx, domain.StreamLocationEnrich, w.ConsumerGroup()); err != nil {
+	// Создаем consumer group (используем background context для инициализации)
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer initCancel()
+	if err := w.streamRepo.CreateConsumerGroup(initCtx, domain.StreamLocationEnrich, w.ConsumerGroup()); err != nil {
 		logger.Error("Failed to create consumer group", zap.Error(err))
 		return fmt.Errorf("failed to create consumer group: %w", err)
 	}
 
 	// Основной цикл обработки
 	for {
-		select {
-		case <-w.StopChan():
-			logger.Info("Worker stopped")
+		// Проверяем сигнал остановки ПЕРЕД чтением новых сообщений
+		if w.shouldStop(ctx) {
+			logger.Info("Worker stopping gracefully")
 			return nil
+		}
 
-		case <-ctx.Done():
-			logger.Info("Context cancelled")
-			return ctx.Err()
+		// Создаем короткий контекст для операций с Redis (не блокирующих)
+		opCtx, opCancel := context.WithTimeout(context.Background(), 5*time.Second)
 
-		default:
-			// Обрабатываем batch сообщений
-			processed, err := w.processBatch(ctx)
-			if err != nil {
-				logger.Error("Failed to process batch", zap.Error(err))
-				time.Sleep(time.Second) // пауза при ошибке
-				continue
+		// Обрабатываем batch сообщений
+		processed, err := w.processBatch(opCtx)
+		opCancel()
+
+		if err != nil {
+			// Проверяем, не связана ли ошибка с shutdown
+			if w.shouldStop(ctx) {
+				logger.Info("Worker stopping after batch error")
+				return nil
 			}
+			logger.Error("Failed to process batch", zap.Error(err))
+			// Короткая пауза при ошибке с проверкой shutdown
+			if w.sleepWithShutdownCheck(ctx, time.Second) {
+				return nil
+			}
+			continue
+		}
 
-			// Если ничего не обработали - короткая пауза
-			if processed == 0 {
-				time.Sleep(emptyQueueSleep)
+		// Если ничего не обработали - короткая пауза с проверкой shutdown
+		if processed == 0 {
+			if w.sleepWithShutdownCheck(ctx, emptyQueueSleep) {
+				logger.Info("Worker stopped while idle")
+				return nil
 			}
 		}
+	}
+}
+
+// shouldStop проверяет, нужно ли остановить воркер
+func (w *LocationEnrichmentWorker) shouldStop(ctx context.Context) bool {
+	select {
+	case <-w.StopChan():
+		return true
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// sleepWithShutdownCheck делает паузу с возможностью прерывания при shutdown
+// Возвращает true если нужно остановиться
+func (w *LocationEnrichmentWorker) sleepWithShutdownCheck(ctx context.Context, duration time.Duration) bool {
+	select {
+	case <-w.StopChan():
+		return true
+	case <-ctx.Done():
+		return true
+	case <-time.After(duration):
+		return false
 	}
 }
 
@@ -114,7 +151,9 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 	}
 
 	logger.Info("Processing batch",
-		zap.Int("message_count", len(messages)))
+		zap.Int("message_count", len(messages)),
+	)
+	logger.Debug("Batch messages", zap.Any("messages", messages))
 
 	// 2. Парсим события
 	events := make([]*domain.LocationEnrichEvent, 0, len(messages))
@@ -171,6 +210,8 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 		return 0, fmt.Errorf("enrichment failed: %w", err)
 	}
 
+	logger.Debug("Enrichment results", zap.Any("response", resp))
+
 	// 5. Публикуем результаты в stream:location:done
 	publishErrors := 0
 	for _, result := range resp.Results {
@@ -182,7 +223,16 @@ func (w *LocationEnrichmentWorker) processBatch(ctx context.Context) (int, error
 		}
 		event := events[result.Index]
 
-		doneEvent := w.buildDoneEvent(event.PropertyID, result)
+		logger.Debug("Input event details",
+			zap.String("property_id", event.PropertyID.String()),
+			zap.Any("street", event.Street),
+			zap.Any("house_number", event.HouseNumber),
+			zap.Any("latitude", event.Latitude),
+			zap.Any("longitude", event.Longitude))
+
+		doneEvent := w.buildDoneEvent(event, result)
+
+		logger.Debug("Publishing done event", zap.Any("event", doneEvent))
 
 		if err := w.streamRepo.PublishToStream(ctx, domain.StreamLocationDone, doneEvent); err != nil {
 			publishErrors++
@@ -230,16 +280,22 @@ func (w *LocationEnrichmentWorker) parseMessage(msg domain.StreamMessage) (*doma
 
 // buildDoneEvent создает LocationDoneEvent из результата обогащения
 func (w *LocationEnrichmentWorker) buildDoneEvent(
-	propertyID uuid.UUID,
+	event *domain.LocationEnrichEvent,
 	result dto.EnrichedLocationResult,
 ) *domain.LocationDoneEvent {
 	doneEvent := &domain.LocationDoneEvent{
-		PropertyID: propertyID,
+		PropertyID: event.PropertyID,
 		Error:      result.Error,
 	}
 
 	if result.EnrichedLocation != nil {
-		doneEvent.EnrichedLocation = w.convertEnrichedLocation(result.EnrichedLocation)
+		enriched := w.convertEnrichedLocation(result.EnrichedLocation)
+		// Добавляем исходные данные из события
+		enriched.Street = event.Street
+		enriched.HouseNumber = event.HouseNumber
+		enriched.Latitude = event.Latitude
+		enriched.Longitude = event.Longitude
+		doneEvent.EnrichedLocation = enriched
 	}
 
 	if len(result.NearestTransport) > 0 {

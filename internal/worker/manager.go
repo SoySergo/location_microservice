@@ -4,8 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
+)
+
+const (
+	// shutdownTimeout - максимальное время ожидания завершения воркеров
+	shutdownTimeout = 30 * time.Second
 )
 
 // WorkerManager управляет несколькими воркерами
@@ -64,7 +70,7 @@ func (m *WorkerManager) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop останавливает все воркеры
+// Stop останавливает все воркеры с timeout
 func (m *WorkerManager) Stop() error {
 	m.mu.Lock()
 	workers := make([]Worker, len(m.workers))
@@ -73,7 +79,7 @@ func (m *WorkerManager) Stop() error {
 
 	m.logger.Info("Stopping workers", zap.Int("count", len(workers)))
 
-	// Останавливаем все воркеры
+	// Останавливаем все воркеры (сигнализируем о завершении)
 	for _, worker := range workers {
 		if err := worker.Stop(); err != nil {
 			m.logger.Error("Failed to stop worker",
@@ -82,9 +88,21 @@ func (m *WorkerManager) Stop() error {
 		}
 	}
 
-	// Ждем завершения всех воркеров
-	m.wg.Wait()
-	m.logger.Info("All workers stopped")
+	// Ждём завершения с timeout
+	done := make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		m.logger.Info("All workers stopped gracefully")
+	case <-time.After(shutdownTimeout):
+		m.logger.Warn("Workers shutdown timed out, some tasks may not have completed",
+			zap.Duration("timeout", shutdownTimeout))
+		return fmt.Errorf("workers shutdown timed out after %v", shutdownTimeout)
+	}
 
 	return nil
 }

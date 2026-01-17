@@ -104,19 +104,18 @@ func main() {
 
 	// Read response
 	timeout := time.After(defaultResponseTimeout)
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	lastID := "0" // читаем с начала стрима
 
 	for {
 		select {
 		case <-timeout:
 			fmt.Println("❌ Timeout waiting for response")
 			return
-		case <-ticker.C:
+		default:
 			results, err := client.XRead(ctx, &redis.XReadArgs{
-				Streams: []string{"stream:location:done", "0"},
+				Streams: []string{"stream:location:done", lastID},
 				Count:   maxMessagesPerRead,
-				Block:   0,
+				Block:   time.Second, // короткий таймаут вместо бесконечной блокировки
 			}).Result()
 
 			if err != nil {
@@ -130,6 +129,9 @@ func main() {
 
 			for _, stream := range results {
 				for _, msg := range stream.Messages {
+					// Обновляем lastID чтобы не читать одни и те же сообщения
+					lastID = msg.ID
+
 					dataStr, ok := msg.Values["data"].(string)
 					if !ok {
 						continue
