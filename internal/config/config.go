@@ -230,6 +230,9 @@ func Load() (*Config, error) {
 	if cfg.Mapbox.BatchInterval == 0 {
 		cfg.Mapbox.BatchInterval = 1000 * time.Millisecond // 1 second
 	}
+	if cfg.Server.Port == 0 {
+		cfg.Server.Port = 8085
+	}
 	if cfg.Cache.POITileCacheTTL == 0 {
 		cfg.Cache.POITileCacheTTL = time.Hour // 1 hour default
 	}

@@ -193,8 +193,8 @@ swagger:
 	@echo "Swagger documentation generated in docs/swagger/"
 
 swagger-serve:
-	@echo "Starting Swagger UI on http://localhost:8081"
-	docker run -p 8081:8080 -e SWAGGER_JSON=/docs/swagger.json -v $(PWD)/docs/swagger:/docs swaggerapi/swagger-ui
+	@echo "Starting Swagger UI on http://localhost:8086"
+	docker run -p 8086:8080 -e SWAGGER_JSON=/docs/swagger.json -v $(PWD)/docs/swagger:/docs swaggerapi/swagger-ui
 
 # Redis Streams testing
 test-publish:
