@@ -621,3 +621,164 @@ func (r *poiRepository) GetPOITileByCategories(ctx context.Context, z, x, y int,
 
 	return tile, nil
 }
+
+// GetPOIInBBox возвращает POI в видимой области карты (bbox) с фильтрацией по категориям.
+func (r *poiRepository) GetPOIInBBox(
+	ctx context.Context,
+	swLat, swLon, neLat, neLon float64,
+	categories, subcategories []string,
+	limit, offset int,
+) ([]*domain.POI, int, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	bboxEnvelope := fmt.Sprintf(
+		"ST_Transform(ST_MakeEnvelope($1, $2, $3, $4, %d), %d)",
+		SRID4326, SRID3857,
+	)
+
+	// Фильтр по категориям/подкатегориям
+	filterClause := ""
+	args := []interface{}{swLon, swLat, neLon, neLat}
+
+	if len(categories) > 0 || len(subcategories) > 0 {
+		var conditions []string
+		if len(categories) > 0 {
+			catPlaceholders := make([]string, len(categories))
+			for i, c := range categories {
+				args = append(args, c)
+				catPlaceholders[i] = fmt.Sprintf("$%d", len(args))
+			}
+			conditions = append(conditions, fmt.Sprintf("(%s) IN (%s)", tileCategoryExpr, strings.Join(catPlaceholders, ",")))
+		}
+		if len(subcategories) > 0 {
+			subPlaceholders := make([]string, len(subcategories))
+			for i, s := range subcategories {
+				args = append(args, s)
+				subPlaceholders[i] = fmt.Sprintf("$%d", len(args))
+			}
+			conditions = append(conditions, fmt.Sprintf("(%s) IN (%s)", tileSubcategoryExpr, strings.Join(subPlaceholders, ",")))
+		}
+		filterClause = " AND (" + strings.Join(conditions, " OR ") + ")"
+	}
+
+	// Считаем total
+	countQuery := fmt.Sprintf(`
+		SELECT count(*)
+		FROM %s
+		WHERE (%s) != 'other'%s
+		  AND way && %s
+	`, planetPointTable, tileCategoryExpr, filterClause, bboxEnvelope)
+
+	var total int
+	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		r.logger.Error("failed to count POI in bbox", zap.Error(err))
+		return nil, 0, pkgerrors.ErrDatabaseError
+	}
+
+	// Получаем POI с полной информацией
+	dataArgs := make([]interface{}, len(args))
+	copy(dataArgs, args)
+	dataArgs = append(dataArgs, limit, offset)
+
+	dataQuery := fmt.Sprintf(`
+		SELECT
+			osm_id,
+			COALESCE(name, '') AS name,
+			COALESCE(NULLIF(tags->'name:en', ''), '') AS name_en,
+			%s AS category,
+			%s AS subcategory,
+			ST_Y(ST_Transform(way, %d)) AS lat,
+			ST_X(ST_Transform(way, %d)) AS lon,
+			COALESCE(tags->'addr:street', '') AS address,
+			COALESCE(tags->'phone', '') AS phone,
+			COALESCE(tags->'website', '') AS website,
+			COALESCE(tags->'opening_hours', '') AS opening_hours,
+			COALESCE(tags->'wheelchair', '') AS wheelchair_str,
+			COALESCE(tags->'brand', '') AS brand,
+			COALESCE(tags->'operator', '') AS operator,
+			COALESCE(tags->'cuisine', '') AS cuisine,
+			COALESCE(tags->'stars', '') AS stars_str,
+			COALESCE(tags->'description', '') AS description
+		FROM %s
+		WHERE (%s) != 'other'%s
+		  AND way && %s
+		ORDER BY (CASE WHEN name IS NOT NULL AND name != '' THEN 0 ELSE 1 END), category, name, osm_id
+		LIMIT $%d OFFSET $%d
+	`, tileCategoryExpr, tileSubcategoryExpr, SRID4326, SRID4326,
+		planetPointTable, tileCategoryExpr, filterClause, bboxEnvelope,
+		len(dataArgs)-1, len(dataArgs))
+
+	rows, err := r.db.QueryxContext(ctx, dataQuery, dataArgs...)
+	if err != nil {
+		r.logger.Error("failed to get POI in bbox", zap.Error(err))
+		return nil, 0, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var pois []*domain.POI
+	for rows.Next() {
+		var p domain.POI
+		var nameEn, address, phone, website, openingHours, wheelchairStr, brand, operator, cuisine, starsStr, description string
+		err := rows.Scan(
+			&p.OSMId, &p.Name, &nameEn, &p.Category, &p.Subcategory,
+			&p.Lat, &p.Lon,
+			&address, &phone, &website, &openingHours, &wheelchairStr,
+			&brand, &operator, &cuisine, &starsStr, &description,
+		)
+		if err != nil {
+			r.logger.Error("failed to scan POI bbox row", zap.Error(err))
+			continue
+		}
+		p.ID = p.OSMId
+		if nameEn != "" {
+			p.NameEn = &nameEn
+		}
+		if address != "" {
+			p.Address = &address
+		}
+		if phone != "" {
+			p.Phone = &phone
+		}
+		if website != "" {
+			p.Website = &website
+		}
+		if openingHours != "" {
+			p.OpeningHours = &openingHours
+		}
+		if wheelchairStr == "yes" {
+			w := true
+			p.Wheelchair = &w
+		}
+		if brand != "" {
+			p.Brand = &brand
+		}
+		if operator != "" {
+			p.Operator = &operator
+		}
+		if cuisine != "" {
+			p.Cuisine = &cuisine
+		}
+		if starsStr != "" {
+			var starsInt int
+			if _, err := fmt.Sscanf(starsStr, "%d", &starsInt); err == nil {
+				p.Stars = &starsInt
+			}
+		}
+		if description != "" {
+			p.Description = &description
+		}
+		if p.Name == "" {
+			p.Name = ensureName(p.Name, p.Category, p.OSMId)
+		}
+
+		pois = append(pois, &p)
+	}
+
+	return pois, total, nil
+}

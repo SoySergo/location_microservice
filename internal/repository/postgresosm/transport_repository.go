@@ -951,6 +951,22 @@ func buildTransportTypeFilter(transportType string) string {
 			OR public_transport = 'platform' AND tags->'bus' = 'yes'
 			OR public_transport = 'stop_position' AND tags->'bus' = 'yes'
 		)`
+	case "cercania":
+		// Cercanías / Rodalies — пригородные поезда
+		return `(
+			railway IN ('station', 'halt')
+			AND (tags->'station' IS NULL OR tags->'station' NOT IN ('subway', 'light_rail'))
+			AND (tags->'subway' IS NULL OR tags->'subway' != 'yes')
+			AND (tags->'network' ILIKE '%Rodalies%' OR tags->'network' ILIKE '%Cercan%' OR tags->'network' ILIKE '%Rodalia%' OR tags->'operator' ILIKE '%Rodalies%' OR tags->'operator' ILIKE '%Renfe Cercan%')
+		)`
+	case "long_distance":
+		// Дальние поезда (AVE, Renfe LD, Adif)
+		return `(
+			railway IN ('station', 'halt')
+			AND (tags->'station' IS NULL OR tags->'station' NOT IN ('subway', 'light_rail'))
+			AND (tags->'subway' IS NULL OR tags->'subway' != 'yes')
+			AND (tags->'network' ILIKE '%AVE%' OR tags->'network' ILIKE '%Adif%' OR tags->'network' ILIKE '%ADIF%' OR tags->'operator' ILIKE '%Renfe%' OR tags->'operator' ILIKE '%ADIF%')
+		)`
 	case "ferry":
 		// Паромные терминалы
 		return `(
@@ -1540,4 +1556,114 @@ func (r *transportRepository) GetLinesByStationIDsBatch(
 	}
 
 	return result, nil
+}
+
+// GetStationsInBBox возвращает станции транспорта в видимой области карты (bbox) с линиями.
+func (r *transportRepository) GetStationsInBBox(
+	ctx context.Context,
+	swLat, swLon, neLat, neLon float64,
+	types []string,
+	limit, offset int,
+) ([]domain.TransportStationWithLines, int, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Фильтр по типам транспорта
+	stationTypeFilter := ""
+	if len(types) > 0 {
+		filters := make([]string, 0, len(types))
+		for _, t := range types {
+			filters = append(filters, buildTransportTypeFilter(t))
+		}
+		stationTypeFilter = " AND (" + strings.Join(filters, " OR ") + ")"
+	}
+
+	// BBox envelope в SRID 3857
+	bboxEnvelope := fmt.Sprintf(
+		"ST_Transform(ST_MakeEnvelope($1, $2, $3, $4, %d), %d)",
+		SRID4326, SRID3857,
+	)
+
+	// Запрос общего количества
+	countQuery := fmt.Sprintf(`
+		SELECT count(*)
+		FROM %s
+		WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop') OR highway = 'bus_stop')%s
+		  AND way && %s
+	`, planetPointTable, stationTypeFilter, bboxEnvelope)
+
+	var total int
+	err := r.db.QueryRowContext(ctx, countQuery, swLon, swLat, neLon, neLat).Scan(&total)
+	if err != nil {
+		r.logger.Error("failed to count stations in bbox", zap.Error(err))
+		return nil, 0, pkgerrors.ErrDatabaseError
+	}
+
+	// Запрос станций
+	stationsQuery := fmt.Sprintf(`
+		SELECT
+			osm_id AS station_id,
+			COALESCE(name, '') AS name,
+			CASE
+				WHEN railway = 'station' AND (tags->'station' = 'subway' OR tags->'subway' = 'yes') THEN 'metro'
+				WHEN railway = 'tram_stop' OR (railway = 'station' AND tags->'station' = 'light_rail') THEN 'tram'
+				WHEN highway = 'bus_stop' OR (public_transport IN ('platform', 'stop_position') AND tags->'bus' = 'yes') THEN 'bus'
+				WHEN railway IN ('station', 'halt') AND (tags->'network' ILIKE '%%Rodalies%%' OR tags->'network' ILIKE '%%Cercan%%') THEN 'cercania'
+				WHEN railway IN ('station', 'halt') THEN 'train'
+				WHEN public_transport IS NOT NULL THEN COALESCE(NULLIF(public_transport, ''), 'stop')
+				ELSE 'station'
+			END AS type,
+			ST_Y(ST_Transform(way, %d)) AS lat,
+			ST_X(ST_Transform(way, %d)) AS lon,
+			COALESCE(tags->'operator', '') AS operator,
+			COALESCE(tags->'network', '') AS network,
+			COALESCE(tags->'wheelchair', '') AS wheelchair
+		FROM %s
+		WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop') OR highway = 'bus_stop')%s
+		  AND way && %s
+		ORDER BY name, osm_id
+		LIMIT $5 OFFSET $6
+	`, SRID4326, SRID4326, planetPointTable, stationTypeFilter, bboxEnvelope)
+
+	rows, err := r.db.QueryxContext(ctx, stationsQuery, swLon, swLat, neLon, neLat, limit, offset)
+	if err != nil {
+		r.logger.Error("failed to get stations in bbox", zap.Error(err))
+		return nil, 0, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	var stations []domain.TransportStationWithLines
+	var stationIDs []int64
+
+	for rows.Next() {
+		var s domain.TransportStationWithLines
+		var operator, network, wheelchair string
+		err := rows.Scan(&s.StationID, &s.Name, &s.Type, &s.Lat, &s.Lon, &operator, &network, &wheelchair)
+		if err != nil {
+			r.logger.Error("failed to scan station bbox row", zap.Error(err))
+			continue
+		}
+		stations = append(stations, s)
+		stationIDs = append(stationIDs, s.StationID)
+	}
+
+	// Получаем линии для всех станций
+	if len(stationIDs) > 0 {
+		linesMap, err := r.GetLinesByStationIDsBatch(ctx, stationIDs)
+		if err != nil {
+			r.logger.Warn("failed to get lines for bbox stations", zap.Error(err))
+		} else {
+			for i := range stations {
+				if lines, ok := linesMap[stations[i].StationID]; ok {
+					stations[i].Lines = lines
+				}
+			}
+		}
+	}
+
+	return stations, total, nil
 }

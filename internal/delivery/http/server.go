@@ -28,6 +28,7 @@ type Server struct {
 	statsHandler            *handler.StatsHandler
 	apiExplorerHandler      *handler.APIExplorerHandler
 	enrichedLocationHandler *handler.EnrichedLocationHandler
+	viewportHandler         *handler.ViewportHandler
 }
 
 // NewServer - создание нового HTTP сервера
@@ -41,6 +42,7 @@ func NewServer(
 	poiTileHandler *handler.POITileHandler,
 	statsHandler *handler.StatsHandler,
 	enrichedLocationHandler *handler.EnrichedLocationHandler,
+	viewportHandler *handler.ViewportHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
 		AppName:      "Location Microservice",
@@ -68,6 +70,7 @@ func NewServer(
 		statsHandler:            statsHandler,
 		apiExplorerHandler:      apiExplorerHandler,
 		enrichedLocationHandler: enrichedLocationHandler,
+		viewportHandler:         viewportHandler,
 	}
 
 	s.setupMiddlewares()
@@ -175,6 +178,10 @@ func (s *Server) setupRoutes() {
 
 	// Stats
 	api.Get("/stats", s.statsHandler.GetStatistics)
+
+	// Viewport data for debug explorer sidebar
+	api.Get("/viewport/transport", s.viewportHandler.GetTransportInViewport)
+	api.Get("/viewport/poi", s.viewportHandler.GetPOIInViewport)
 }
 
 // Start - запуск HTTP сервера

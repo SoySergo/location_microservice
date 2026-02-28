@@ -247,6 +247,14 @@ func (m *MockTransportRepository) GetNearestTransportByPriorityBatch(ctx context
 	return args.Get(0).([]domain.BatchTransportResult), args.Error(1)
 }
 
+func (m *MockTransportRepository) GetStationsInBBox(ctx context.Context, swLat, swLon, neLat, neLon float64, types []string, limit, offset int) ([]domain.TransportStationWithLines, int, error) {
+	args := m.Called(ctx, swLat, swLon, neLat, neLon, types, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Int(1), args.Error(2)
+	}
+	return args.Get(0).([]domain.TransportStationWithLines), args.Int(1), args.Error(2)
+}
+
 // NOTE: The old EnrichmentUseCase tests have been removed as the usecase has been refactored.
 // The new enrichment logic is now in EnrichedLocationUseCase which is tested in enriched_location_usecase_test.go
 // The old EnrichmentUseCase is kept for backward compatibility but is no longer the primary interface.
@@ -255,7 +263,7 @@ func (m *MockTransportRepository) GetNearestTransportByPriorityBatch(ctx context
 func TestMockRepositories(t *testing.T) {
 	mockBoundary := &MockBoundaryRepository{}
 	mockTransport := &MockTransportRepository{}
-	
+
 	assert.NotNil(t, mockBoundary)
 	assert.NotNil(t, mockTransport)
 }

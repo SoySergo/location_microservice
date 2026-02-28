@@ -63,4 +63,8 @@ type TransportRepository interface {
 	// GetNearestTransportByPriorityBatch возвращает ближайший транспорт с приоритетом для множества точек.
 	// Один SQL запрос для всех точек с применением логики приоритизации.
 	GetNearestTransportByPriorityBatch(ctx context.Context, points []domain.TransportSearchPoint, radiusM float64, limitPerPoint int) ([]domain.BatchTransportResult, error)
+
+	// GetStationsInBBox возвращает станции транспорта в видимой области карты (bbox).
+	// Используется для сайдбара debug explorer. Включает информацию о линиях.
+	GetStationsInBBox(ctx context.Context, swLat, swLon, neLat, neLon float64, types []string, limit, offset int) ([]domain.TransportStationWithLines, int, error)
 }

@@ -250,3 +250,45 @@
     </div>
 </div>
 {{end}}
+
+{{define "data-sidebar-content"}}
+<!-- Sidebar header with toggle -->
+<div class="ds-header">
+    <h3>📋 Объекты в зоне видимости</h3>
+    <button id="ds-toggle-btn" class="ds-toggle" title="Свернуть/развернуть">◀</button>
+</div>
+
+<!-- Transport section -->
+<div class="ds-section" id="ds-transport-section">
+    <div class="ds-section-header" onclick="toggleDSSection('ds-transport-section')">
+        <span>🚇 Транспорт</span>
+        <span class="ds-count" id="ds-transport-count">0</span>
+    </div>
+    <div class="ds-section-body">
+        <div id="ds-transport-list" class="ds-list"></div>
+        <div id="ds-transport-loading" class="ds-loading" style="display:none">
+            <div class="spinner"></div><span>Загрузка...</span>
+        </div>
+        <div id="ds-transport-load-more" class="ds-load-more" style="display:none">
+            <button onclick="loadMoreTransport()">Показать ещё</button>
+        </div>
+    </div>
+</div>
+
+<!-- POI section -->
+<div class="ds-section" id="ds-poi-section">
+    <div class="ds-section-header" onclick="toggleDSSection('ds-poi-section')">
+        <span>📌 POI</span>
+        <span class="ds-count" id="ds-poi-count">0</span>
+    </div>
+    <div class="ds-section-body">
+        <div id="ds-poi-list" class="ds-list"></div>
+        <div id="ds-poi-loading" class="ds-loading" style="display:none">
+            <div class="spinner"></div><span>Загрузка...</span>
+        </div>
+        <div id="ds-poi-load-more" class="ds-load-more" style="display:none">
+            <button onclick="loadMorePOI()">Показать ещё</button>
+        </div>
+    </div>
+</div>
+{{end}}

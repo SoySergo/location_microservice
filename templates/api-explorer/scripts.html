@@ -58,7 +58,13 @@ async function initApp() {
             setupTransportTileLayer();
             setupPOITileLayer();
             setupLayerInteractivity();
+            // Load viewport data on initial load and on map move
+            loadViewportData();
+            setupDataSidebarScroll();
         });
+
+        // Reload viewport data when map moves
+        map.on('moveend', onViewportChanged);
 
         setupEventListeners();
     } catch (err) {
@@ -850,6 +856,7 @@ function setupEventListeners() {
     document.querySelectorAll('[data-transport]').forEach(cb => {
         cb.addEventListener('change', () => {
             refreshTransportTiles();
+            onViewportChanged(); // reload sidebar data
         });
     });
 
@@ -865,6 +872,7 @@ function setupEventListeners() {
                 });
             }
             refreshPOITiles();
+            onViewportChanged(); // reload sidebar data
         });
     });
 
@@ -881,6 +889,7 @@ function setupEventListeners() {
                 parentCb.indeterminate = checkedSubs.length > 0 && checkedSubs.length < allSubs.length;
             }
             refreshPOITiles();
+            onViewportChanged(); // reload sidebar data
         });
     });
 
@@ -898,11 +907,275 @@ function setupEventListeners() {
             drawRadiusCircle(clickPoint.lat, clickPoint.lng, radius);
         }
     });
+
+    // Data sidebar toggle
+    document.getElementById('ds-toggle-btn').addEventListener('click', () => {
+        const sidebar = document.getElementById('data-sidebar');
+        const btn = document.getElementById('ds-toggle-btn');
+        sidebar.classList.toggle('collapsed');
+        btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+        // Trigger map resize after transition
+        setTimeout(() => map.resize(), 250);
+    });
 }
 
 // ===================== PANEL TOGGLE =====================
 function togglePanel(panelId) {
     document.getElementById(panelId).classList.toggle('collapsed');
+}
+
+// ===================== DATA SIDEBAR (VIEWPORT) =====================
+let dsTransportOffset = 0;
+let dsTransportTotal = 0;
+let dsTransportLoading = false;
+let dsPOIOffset = 0;
+let dsPOITotal = 0;
+let dsPOILoading = false;
+const DS_PAGE_SIZE = 30;
+let dsViewportDebounce = null;
+
+function toggleDSSection(sectionId) {
+    document.getElementById(sectionId).classList.toggle('collapsed');
+}
+
+function getViewportBBox() {
+    const bounds = map.getBounds();
+    return {
+        sw_lat: bounds.getSouthWest().lat,
+        sw_lon: bounds.getSouthWest().lng,
+        ne_lat: bounds.getNorthEast().lat,
+        ne_lon: bounds.getNorthEast().lng
+    };
+}
+
+// Called when map moves
+function onViewportChanged() {
+    if (dsViewportDebounce) clearTimeout(dsViewportDebounce);
+    dsViewportDebounce = setTimeout(() => {
+        loadViewportData();
+    }, 400);
+}
+
+async function loadViewportData() {
+    // Reset pagination
+    dsTransportOffset = 0;
+    dsTransportTotal = 0;
+    dsPOIOffset = 0;
+    dsPOITotal = 0;
+    document.getElementById('ds-transport-list').innerHTML = '';
+    document.getElementById('ds-poi-list').innerHTML = '';
+
+    await Promise.all([
+        loadViewportTransport(false),
+        loadViewportPOI(false)
+    ]);
+}
+
+async function loadViewportTransport(append) {
+    if (dsTransportLoading) return;
+    dsTransportLoading = true;
+
+    const loadingEl = document.getElementById('ds-transport-loading');
+    const loadMoreEl = document.getElementById('ds-transport-load-more');
+    loadingEl.style.display = 'flex';
+    loadMoreEl.style.display = 'none';
+
+    const bbox = getViewportBBox();
+    const types = getSelectedTransportTypes();
+    const params = new URLSearchParams({
+        sw_lat: bbox.sw_lat, sw_lon: bbox.sw_lon,
+        ne_lat: bbox.ne_lat, ne_lon: bbox.ne_lon,
+        limit: DS_PAGE_SIZE, offset: dsTransportOffset
+    });
+    if (types.length > 0) params.set('types', types.join(','));
+
+    try {
+        const resp = await fetch(`${API}/viewport/transport?${params}`);
+        const data = await resp.json();
+
+        if (data.data) {
+            const stations = data.data.stations || [];
+            dsTransportTotal = data.data.total || 0;
+            dsTransportOffset += stations.length;
+
+            const countEl = document.getElementById('ds-transport-count');
+            countEl.textContent = dsTransportTotal;
+
+            const listEl = document.getElementById('ds-transport-list');
+            if (!append) listEl.innerHTML = '';
+
+            stations.forEach(s => {
+                listEl.insertAdjacentHTML('beforeend', renderDSTransportCard(s));
+            });
+
+            // Show load more if there are more results
+            if (dsTransportOffset < dsTransportTotal) {
+                loadMoreEl.style.display = 'block';
+            }
+
+            // Click handlers for cards
+            listEl.querySelectorAll('.ds-card[data-lat]:not([data-bound])').forEach(card => {
+                card.setAttribute('data-bound', '1');
+                card.addEventListener('click', () => {
+                    const lt = parseFloat(card.dataset.lat);
+                    const ln = parseFloat(card.dataset.lon);
+                    if (lt && ln) {
+                        map.flyTo({ center: [ln, lt], zoom: Math.max(map.getZoom(), 15), duration: 800 });
+                    }
+                });
+            });
+        }
+    } catch (err) {
+        console.error('Viewport transport error:', err);
+    } finally {
+        loadingEl.style.display = 'none';
+        dsTransportLoading = false;
+    }
+}
+
+async function loadViewportPOI(append) {
+    if (dsPOILoading) return;
+    dsPOILoading = true;
+
+    const loadingEl = document.getElementById('ds-poi-loading');
+    const loadMoreEl = document.getElementById('ds-poi-load-more');
+    loadingEl.style.display = 'flex';
+    loadMoreEl.style.display = 'none';
+
+    const bbox = getViewportBBox();
+    const cats = getSelectedPOICategories();
+    const subs = getSelectedPOISubcategories();
+    const params = new URLSearchParams({
+        sw_lat: bbox.sw_lat, sw_lon: bbox.sw_lon,
+        ne_lat: bbox.ne_lat, ne_lon: bbox.ne_lon,
+        limit: DS_PAGE_SIZE, offset: dsPOIOffset
+    });
+    if (cats.length > 0) params.set('categories', cats.join(','));
+    if (subs.length > 0) params.set('subcategories', subs.join(','));
+
+    try {
+        const resp = await fetch(`${API}/viewport/poi?${params}`);
+        const data = await resp.json();
+
+        if (data.data) {
+            const pois = data.data.pois || [];
+            dsPOITotal = data.data.total || 0;
+            dsPOIOffset += pois.length;
+
+            const countEl = document.getElementById('ds-poi-count');
+            countEl.textContent = dsPOITotal;
+
+            const listEl = document.getElementById('ds-poi-list');
+            if (!append) listEl.innerHTML = '';
+
+            pois.forEach(p => {
+                listEl.insertAdjacentHTML('beforeend', renderDSPOICard(p));
+            });
+
+            if (dsPOIOffset < dsPOITotal) {
+                loadMoreEl.style.display = 'block';
+            }
+
+            listEl.querySelectorAll('.ds-card[data-lat]:not([data-bound])').forEach(card => {
+                card.setAttribute('data-bound', '1');
+                card.addEventListener('click', () => {
+                    const lt = parseFloat(card.dataset.lat);
+                    const ln = parseFloat(card.dataset.lon);
+                    if (lt && ln) {
+                        map.flyTo({ center: [ln, lt], zoom: Math.max(map.getZoom(), 15), duration: 800 });
+                    }
+                });
+            });
+        }
+    } catch (err) {
+        console.error('Viewport POI error:', err);
+    } finally {
+        loadingEl.style.display = 'none';
+        dsPOILoading = false;
+    }
+}
+
+function loadMoreTransport() {
+    loadViewportTransport(true);
+}
+
+function loadMorePOI() {
+    loadViewportPOI(true);
+}
+
+function renderDSTransportCard(s) {
+    const type = s.type || 'station';
+    let linesHtml = '';
+    if (s.lines && s.lines.length > 0) {
+        linesHtml = '<div class="ds-card-lines">';
+        s.lines.forEach(l => {
+            const bg = l.color || TRANSPORT_COLORS[type] || '#30363d';
+            const label = l.ref || l.name || l.type || '';
+            linesHtml += `<span class="line-badge" style="background:${bg}">${label}</span>`;
+        });
+        linesHtml += '</div>';
+    }
+
+    return `<div class="ds-card ${type}" data-lat="${s.lat || ''}" data-lon="${s.lon || ''}">
+        <div class="ds-card-name">
+            <span class="type-badge ${type}">${type}</span>
+            ${s.name || 'Без названия'}
+        </div>
+        ${s.name_en && s.name_en !== s.name ? `<div class="ds-card-meta"><span>${s.name_en}</span></div>` : ''}
+        ${linesHtml}
+    </div>`;
+}
+
+function renderDSPOICard(p) {
+    const cat = p.category || '';
+    const sub = p.subcategory || '';
+
+    let details = '';
+    if (p.address) details += `<div class="ds-card-detail"><span class="dl">📍</span> <span class="dv">${p.address}</span></div>`;
+    if (p.phone) details += `<div class="ds-card-detail"><span class="dl">📞</span> <span class="dv">${p.phone}</span></div>`;
+    if (p.website) details += `<div class="ds-card-detail"><span class="dl">🌐</span> <span class="dv"><a href="${p.website}" target="_blank" style="color:#58a6ff;text-decoration:none">${truncate(p.website,40)}</a></span></div>`;
+    if (p.opening_hours) details += `<div class="ds-card-detail"><span class="dl">🕐</span> <span class="dv">${p.opening_hours}</span></div>`;
+    if (p.cuisine) details += `<div class="ds-card-detail"><span class="dl">🍽️</span> <span class="dv">${p.cuisine}</span></div>`;
+    if (p.wheelchair !== undefined && p.wheelchair !== null) details += `<div class="ds-card-detail"><span class="dl">♿</span> <span class="dv">${p.wheelchair ? 'Да' : 'Нет'}</span></div>`;
+    if (p.brand) details += `<div class="ds-card-detail"><span class="dl">🏷️</span> <span class="dv">${p.brand}</span></div>`;
+    if (p.operator) details += `<div class="ds-card-detail"><span class="dl">🏢</span> <span class="dv">${p.operator}</span></div>`;
+
+    let starsHtml = '';
+    if (p.stars && p.stars > 0) {
+        starsHtml = `<div class="ds-card-stars">${'⭐'.repeat(Math.min(p.stars, 5))}</div>`;
+    }
+
+    return `<div class="ds-card ${cat}" data-lat="${p.lat || ''}" data-lon="${p.lon || ''}">
+        <div class="ds-card-name">
+            <span class="type-badge" style="background:${hexAlpha(POI_COLORS[cat] || '#888', 0.2)};color:${POI_COLORS[cat] || '#888'}">${sub || cat}</span>
+            ${p.name || 'Без названия'}
+        </div>
+        ${p.name_en && p.name_en !== p.name ? `<div class="ds-card-meta"><span>${p.name_en}</span></div>` : ''}
+        ${starsHtml}
+        ${details}
+    </div>`;
+}
+
+function truncate(str, max) {
+    if (!str) return '';
+    return str.length > max ? str.substring(0, max) + '…' : str;
+}
+
+// Setup infinite scroll on the data sidebar
+function setupDataSidebarScroll() {
+    const sidebar = document.getElementById('data-sidebar');
+    sidebar.addEventListener('scroll', () => {
+        const { scrollTop, scrollHeight, clientHeight } = sidebar;
+        if (scrollTop + clientHeight >= scrollHeight - 100) {
+            // Near bottom - load more if available
+            if (dsTransportOffset < dsTransportTotal && !dsTransportLoading) {
+                loadViewportTransport(true);
+            }
+            if (dsPOIOffset < dsPOITotal && !dsPOILoading) {
+                loadViewportPOI(true);
+            }
+        }
+    });
 }
 
 // ===================== START =====================

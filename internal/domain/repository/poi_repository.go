@@ -37,4 +37,8 @@ type POIRepository interface {
 
 	// GetPOITileByCategories генерирует MVT тайл с POI по координатам тайла с фильтрацией по категориям и подкатегориям
 	GetPOITileByCategories(ctx context.Context, z, x, y int, categories, subcategories []string) ([]byte, error)
+
+	// GetPOIInBBox возвращает POI в видимой области карты (bbox) с фильтрацией по категориям.
+	// Используется для сайдбара debug explorer.
+	GetPOIInBBox(ctx context.Context, swLat, swLon, neLat, neLon float64, categories, subcategories []string, limit, offset int) ([]*domain.POI, int, error)
 }
