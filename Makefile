@@ -1,7 +1,7 @@
 .PHONY: help build run migrate-up migrate-down migrate-force test lint clean dev run-api test-health test-endpoints
 .PHONY: test-db-up test-db-down test-db-reset test-integration test-integration-coverage
 .PHONY: build-worker run-worker
-.PHONY: build-importer run-importer import-osm build-boundary-importer run-boundary-importer
+.PHONY: build-importer run-importer import-osm build-boundary-importer run-boundary-importer osm-post-import osm-setup
 .PHONY: swagger swagger-serve
 .PHONY: test-publish test-publish-custom check-streams
 
@@ -29,6 +29,8 @@ help:
 	@echo "  make build-importer - Build OSM importer binary"
 	@echo "  make run-importer   - Run OSM importer"
 	@echo "  make import-osm     - Full pipeline: build, migrate, import OSM data"
+	@echo "  make osm-post-import- Apply post-import setup (way_geog + indexes)"
+	@echo "  make osm-setup      - Full osm2pgsql import + post-import setup"
 	@echo ""
 	@echo "Boundary Importer commands:"
 	@echo "  make build-boundary-importer - Build boundary importer binary"
@@ -167,6 +169,26 @@ import-osm:
 	@echo "5. Running importer..."
 	./bin/importer
 	@echo "OSM import completed successfully!"
+
+# OSM post-import setup (geography columns + indexes)
+osm-post-import:
+	@echo "Applying post-import setup (way_geog columns + indexes)..."
+	docker cp scripts/post-import.sql osm_postgres:/tmp/post-import.sql
+	docker exec osm_postgres psql -U osmuser -d osm -f /tmp/post-import.sql
+	@echo "Post-import setup completed!"
+
+# Full OSM setup: osm2pgsql import + post-import
+osm-setup:
+	@echo "Starting full OSM setup..."
+	@echo "1. Starting OSM database..."
+	docker-compose up -d osm_db
+	@echo "2. Waiting for database..."
+	@sleep 10
+	@echo "3. Running osm2pgsql import..."
+	docker-compose --profile osm up osm2pgsql
+	@echo "4. Applying post-import setup..."
+	@make osm-post-import
+	@echo "Full OSM setup completed!"
 
 # Boundary Importer commands
 build-boundary-importer:

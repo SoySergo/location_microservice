@@ -41,7 +41,7 @@ func ptr[T any](v T) *T {
 }
 
 func main() {
-	redisAddr := flag.String("redis", "localhost:6380", "Redis address for streams")
+	redisAddr := flag.String("redis", "localhost:6381", "Redis address for streams")
 	flag.Parse()
 
 	client := redis.NewClient(&redis.Options{

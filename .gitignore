@@ -27,5 +27,5 @@ go.sum
 Thumbs.db
 
 # Data
-test/osm_data/*.osm.pbf
+osm_data
 api
