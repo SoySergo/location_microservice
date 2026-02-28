@@ -1,759 +1,911 @@
 {{define "scripts"}}
 <script>
-    // ========== Configuration ==========
-    const API_BASE = '/api/v1';
+// ===================== CONFIG =====================
+const API = '/api/v1';
+const MAP_STYLE = '{{.MapStyle}}';
+const MAP_CENTER = [{{.MapCenter.Lon}}, {{.MapCenter.Lat}}];
+const MAP_ZOOM = {{.MapZoom}};
 
-    // ========== State ==========
-    let map = null;
-    let currentMethod = '{{.DefaultMethod}}';
-    let searchPoints = [];
-    let searchMarkers = [];
-    let stationMarkers = [];
-    let activePopup = null;
-    let results = null;
-    let rawResponse = null;
-    let currentView = 'ui';
+// ===================== STATE =====================
+let map = null;
+let clickMarker = null;
+let clickPoint = null;
+let stationMarkers = [];
+let poiMarkers = [];
+let activePopup = null;
 
-    // ========== Methods Configuration ==========
-    const METHODS = {
-        {{range .Methods}}
-        '{{.ID}}': {
-            name: '{{.Name}}',
-            endpoint: '{{.Endpoint}}',
-            httpMethod: '{{.HTTPMethod}}',
-            isBatch: {{.IsBatch}},
-            showTypes: {{.ShowTypes}}
+// Transport type colors
+const TRANSPORT_COLORS = {
+    metro: '#d32f2f', bus: '#388e3c', tram: '#f57c00',
+    cercania: '#7b1fa2', long_distance: '#0288d1', train: '#0288d1'
+};
+
+// POI category colors
+const POI_COLORS = {
+    healthcare: '#e53935', shopping: '#ff9800', education: '#1976d2',
+    leisure: '#43a047', food_drink: '#8d6e63'
+};
+
+// ===================== INIT =====================
+async function initApp() {
+    try {
+        mapboxgl.accessToken = '{{.MapboxToken}}';
+        if (!mapboxgl.accessToken) throw new Error('No Mapbox token configured');
+
+        map = new mapboxgl.Map({
+            container: 'map',
+            style: MAP_STYLE,
+            center: MAP_CENTER,
+            zoom: MAP_ZOOM
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+        map.addControl(new mapboxgl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+
+        map.on('mousemove', e => {
+            document.getElementById('cursor-coords').textContent =
+                `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`;
+        });
+
+        map.on('zoom', () => {
+            document.getElementById('zoom-level').textContent = `z${map.getZoom().toFixed(1)}`;
+        });
+
+        map.on('load', () => {
+            addRadiusCircleSource();
+            setupBoundaryTileLayer();
+            setupEnvironmentTileLayers();
+            setupTransportTileLayer();
+            setupPOITileLayer();
+            setupLayerInteractivity();
+        });
+
+        setupEventListeners();
+    } catch (err) {
+        console.error('Init error:', err);
+        document.getElementById('click-results').innerHTML =
+            `<div class="error-msg">Ошибка инициализации: ${err.message}</div>`;
+    }
+}
+
+// ===================== TILE LAYERS =====================
+
+function getSelectedTransportTypes() {
+    return Array.from(document.querySelectorAll('[data-transport]:checked'))
+        .map(cb => cb.dataset.transport);
+}
+
+function getSelectedPOICategories() {
+    return Array.from(document.querySelectorAll('[data-poi]:checked'))
+        .map(cb => cb.dataset.poi);
+}
+
+function getSelectedPOISubcategories() {
+    return Array.from(document.querySelectorAll('[data-poi-sub]:checked'))
+        .map(cb => cb.dataset.poiSub);
+}
+
+// --- Transport tiles ---
+function setupTransportTileLayer() {
+    const types = getSelectedTransportTypes();
+    if (types.length === 0) return;
+
+    const url = `${location.origin}${API}/tiles/transport/{z}/{x}/{y}.pbf?types=${types.join(',')}`;
+
+    map.addSource('transport-tiles', {
+        type: 'vector',
+        tiles: [url],
+        minzoom: 8,
+        maxzoom: 16
+    });
+
+    // Station circles
+    map.addLayer({
+        id: 'transport-stations-circle',
+        type: 'circle',
+        source: 'transport-tiles',
+        'source-layer': 'stations',
+        paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 14, 7, 16, 10],
+            'circle-color': ['match', ['get', 'type'],
+                'subway', TRANSPORT_COLORS.metro,
+                'station', TRANSPORT_COLORS.train,
+                'tram_stop', TRANSPORT_COLORS.tram,
+                'bus_stop', TRANSPORT_COLORS.bus,
+                'stop', TRANSPORT_COLORS.bus,
+                '#888'
+            ],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#fff'
+        }
+    });
+
+    // Station labels
+    map.addLayer({
+        id: 'transport-stations-label',
+        type: 'symbol',
+        source: 'transport-tiles',
+        'source-layer': 'stations',
+        minzoom: 13,
+        layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 11,
+            'text-offset': [0, 1.3],
+            'text-anchor': 'top',
+            'text-max-width': 10,
+            'text-allow-overlap': false
         },
-        {{end}}
-    };
+        paint: {
+            'text-color': '#e6edf3',
+            'text-halo-color': '#0d1117',
+            'text-halo-width': 1.5
+        }
+    });
 
-    // ========== Request Examples ==========
-    const requestExamples = {
-        // Search & Geocoding
-        'search': { params: { q: 'Barcelona', language: 'en', limit: 10 } },
-        'reverse-geocode': { body: { lat: 41.3851, lon: 2.1734 } },
-        'reverse-geocode-batch': { body: { points: [{ lat: 41.3851, lon: 2.1734 }, { lat: 41.4036, lon: 2.1744 }] } },
-        'boundary-by-id': { pathParams: { id: '1' } },
-        
-        // Location Enrichment
-        'enrich-location': { 
-            body: { 
-                country: 'Spain',
-                city: 'Barcelona',
-                district: 'Eixample',
-                latitude: 41.3851,
-                longitude: 2.1734,
-                is_visible: true
-            } 
-        },
-        'enrich-location-batch': {
-            body: {
-                locations: [
-                    { index: 0, country: 'Spain', city: 'Barcelona', latitude: 41.3851, longitude: 2.1734, is_visible: true },
-                    { index: 1, country: 'Spain', city: 'Madrid', latitude: 40.4168, longitude: -3.7038, is_visible: true }
+    // Lines
+    map.addLayer({
+        id: 'transport-lines',
+        type: 'line',
+        source: 'transport-tiles',
+        'source-layer': 'lines',
+        paint: {
+            'line-color': ['case',
+                ['!=', ['get', 'color'], ''], ['get', 'color'],
+                ['match', ['get', 'type'],
+                    'subway', TRANSPORT_COLORS.metro,
+                    'train', TRANSPORT_COLORS.train,
+                    'tram', TRANSPORT_COLORS.tram,
+                    'bus', TRANSPORT_COLORS.bus,
+                    '#888'
                 ]
-            }
+            ],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3, 16, 4],
+            'line-opacity': 0.7
+        }
+    }, 'transport-stations-circle');
+}
+
+function refreshTransportTiles() {
+    const types = getSelectedTransportTypes();
+
+    // Remove existing layers and source
+    ['transport-stations-label', 'transport-stations-circle', 'transport-lines'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+    });
+    if (map.getSource('transport-tiles')) map.removeSource('transport-tiles');
+
+    if (types.length > 0) {
+        setupTransportTileLayer();
+    }
+}
+
+// --- POI tiles ---
+function setupPOITileLayer() {
+    const cats = getSelectedPOICategories();
+    const subs = getSelectedPOISubcategories();
+    if (cats.length === 0 && subs.length === 0) return;
+
+    let params = [];
+    if (cats.length > 0) params.push(`categories=${cats.join(',')}`);
+    if (subs.length > 0) params.push(`subcategories=${subs.join(',')}`);
+    const qs = params.join('&');
+
+    const url = `${location.origin}${API}/tiles/poi/{z}/{x}/{y}.pbf?${qs}`;
+
+    map.addSource('poi-tiles', {
+        type: 'vector',
+        tiles: [url],
+        minzoom: 12,
+        maxzoom: 16
+    });
+
+    map.addLayer({
+        id: 'poi-circles',
+        type: 'circle',
+        source: 'poi-tiles',
+        'source-layer': 'pois',
+        paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 14, 5, 16, 8],
+            'circle-color': ['match', ['get', 'category'],
+                'healthcare', POI_COLORS.healthcare,
+                'shopping', POI_COLORS.shopping,
+                'education', POI_COLORS.education,
+                'leisure', POI_COLORS.leisure,
+                'food_drink', POI_COLORS.food_drink,
+                '#888'
+            ],
+            'circle-stroke-width': 1,
+            'circle-stroke-color': 'rgba(255,255,255,0.7)',
+            'circle-opacity': 0.85
+        }
+    });
+
+    map.addLayer({
+        id: 'poi-labels',
+        type: 'symbol',
+        source: 'poi-tiles',
+        'source-layer': 'pois',
+        minzoom: 14,
+        layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 10,
+            'text-offset': [0, 1.2],
+            'text-anchor': 'top',
+            'text-max-width': 8,
+            'text-allow-overlap': false
         },
-        'detect-location-batch': {
-            body: {
-                locations: [
-                    { index: 0, country: 'Spain', city: 'Barcelona' },
-                    { index: 1, country: 'Spain', region: 'Catalonia', city: 'Girona' }
-                ]
-            }
+        paint: {
+            'text-color': '#c9d1d9',
+            'text-halo-color': '#0d1117',
+            'text-halo-width': 1
+        }
+    });
+}
+
+function refreshPOITiles() {
+    ['poi-labels', 'poi-circles'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+    });
+    if (map.getSource('poi-tiles')) map.removeSource('poi-tiles');
+
+    setupPOITileLayer();
+}
+
+// --- Boundary tiles ---
+function setupBoundaryTileLayer() {
+    const url = `${location.origin}${API}/boundaries/tiles/{z}/{x}/{y}.pbf`;
+
+    map.addSource('boundary-tiles', {
+        type: 'vector',
+        tiles: [url],
+        minzoom: 4,
+        maxzoom: 14
+    });
+
+    map.addLayer({
+        id: 'boundary-fill',
+        type: 'fill',
+        source: 'boundary-tiles',
+        'source-layer': 'boundaries',
+        paint: {
+            'fill-color': '#58a6ff',
+            'fill-opacity': 0.04
         },
-        
-        // Transport
-        'transport-nearest': { body: { lat: 41.3851, lon: 2.1734, max_distance: 1000, types: ['metro', 'bus'] } },
-        'transport-nearest-batch': { body: { points: [{ lat: 41.3851, lon: 2.1734 }], max_distance: 1000, types: ['metro'] } },
-        'transport-priority': { params: { lat: 41.3851, lon: 2.1734, radius: 1500, limit: 5 } },
-        'transport-priority-batch': { body: { points: [{ lat: 41.3851, lon: 2.1734 }], radius: 1500, limit: 5 } },
-        'station-lines': { pathParams: { station_id: '1' } },
-        
-        // POI
-        'poi-radius': { body: { lat: 41.3851, lon: 2.1734, radius: 500, categories: ['healthcare', 'shopping'] } },
-        'poi-categories': { params: { language: 'en' } },
-        'poi-subcategories': { pathParams: { id: 'healthcare' } },
-        
-        // Tiles (no examples needed for tiles as they require specific z/x/y coordinates)
-        'tile-boundaries': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        'tile-transport': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        'tile-transport-filtered': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        'tile-poi': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        'tile-green-spaces': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        'tile-water': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        'tile-beaches': { pathParams: { z: 13, x: 4096, y: 3073 } },
-        
-        // System
-        'stats': {},
-        'health': {}
+        layout: { 'visibility': 'none' }
+    });
+
+    map.addLayer({
+        id: 'boundary-line',
+        type: 'line',
+        source: 'boundary-tiles',
+        'source-layer': 'boundaries',
+        paint: {
+            'line-color': '#58a6ff',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 1.5, 14, 2.5],
+            'line-opacity': 0.6,
+            'line-dasharray': [2, 2]
+        },
+        layout: { 'visibility': 'none' }
+    });
+
+    map.addLayer({
+        id: 'boundary-label',
+        type: 'symbol',
+        source: 'boundary-tiles',
+        'source-layer': 'boundaries',
+        minzoom: 10,
+        layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 12,
+            'text-max-width': 10,
+            'text-allow-overlap': false,
+            'visibility': 'none'
+        },
+        paint: {
+            'text-color': '#58a6ff',
+            'text-halo-color': '#0d1117',
+            'text-halo-width': 1.5
+        }
+    });
+}
+
+function toggleBoundaryLayer(visible) {
+    const vis = visible ? 'visible' : 'none';
+    ['boundary-fill', 'boundary-line', 'boundary-label'].forEach(id => {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+}
+
+// --- Environment tiles ---
+function setupEnvironmentTileLayers() {
+    // Green spaces
+    map.addSource('green-tiles', {
+        type: 'vector',
+        tiles: [`${location.origin}${API}/green-spaces/tiles/{z}/{x}/{y}.pbf`],
+        minzoom: 10, maxzoom: 16
+    });
+    map.addLayer({
+        id: 'green-fill', type: 'fill', source: 'green-tiles', 'source-layer': 'green_spaces',
+        paint: { 'fill-color': '#4caf50', 'fill-opacity': 0.25 },
+        layout: { 'visibility': 'none' }
+    });
+    map.addLayer({
+        id: 'green-outline', type: 'line', source: 'green-tiles', 'source-layer': 'green_spaces',
+        paint: { 'line-color': '#4caf50', 'line-width': 1, 'line-opacity': 0.5 },
+        layout: { 'visibility': 'none' }
+    });
+
+    // Water
+    map.addSource('water-tiles', {
+        type: 'vector',
+        tiles: [`${location.origin}${API}/water/tiles/{z}/{x}/{y}.pbf`],
+        minzoom: 10, maxzoom: 16
+    });
+    map.addLayer({
+        id: 'water-fill', type: 'fill', source: 'water-tiles', 'source-layer': 'water',
+        paint: { 'fill-color': '#2196f3', 'fill-opacity': 0.25 },
+        layout: { 'visibility': 'none' }
+    });
+    map.addLayer({
+        id: 'water-outline', type: 'line', source: 'water-tiles', 'source-layer': 'water',
+        paint: { 'line-color': '#2196f3', 'line-width': 1, 'line-opacity': 0.5 },
+        layout: { 'visibility': 'none' }
+    });
+
+    // Beaches
+    map.addSource('beach-tiles', {
+        type: 'vector',
+        tiles: [`${location.origin}${API}/beaches/tiles/{z}/{x}/{y}.pbf`],
+        minzoom: 12, maxzoom: 16
+    });
+    map.addLayer({
+        id: 'beach-fill', type: 'fill', source: 'beach-tiles', 'source-layer': 'beaches',
+        paint: { 'fill-color': '#fdd835', 'fill-opacity': 0.3 },
+        layout: { 'visibility': 'none' }
+    });
+    map.addLayer({
+        id: 'beach-outline', type: 'line', source: 'beach-tiles', 'source-layer': 'beaches',
+        paint: { 'line-color': '#fdd835', 'line-width': 1.5, 'line-opacity': 0.6 },
+        layout: { 'visibility': 'none' }
+    });
+}
+
+function toggleEnvLayer(type, visible) {
+    const vis = visible ? 'visible' : 'none';
+    const layers = {
+        green: ['green-fill', 'green-outline'],
+        water: ['water-fill', 'water-outline'],
+        beaches: ['beach-fill', 'beach-outline']
     };
+    (layers[type] || []).forEach(id => {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+}
 
-    // ========== DOM Elements ==========
-    const resultsContainer = document.getElementById('results-container');
-    const uiResults = document.getElementById('ui-results');
-    const jsonResults = document.getElementById('json-results');
-    const pointsCountSpan = document.getElementById('points-count');
-    const executeBtn = document.getElementById('execute-btn');
-    const clearBtn = document.getElementById('clear-btn');
-    const typesGroup = document.getElementById('types-group');
-
-    // ========== View Switching ==========
-    function switchView(view) {
-        currentView = view;
-        document.getElementById('btn-view-ui').classList.toggle('active', view === 'ui');
-        document.getElementById('btn-view-json').classList.toggle('active', view === 'json');
-        
-        uiResults.classList.toggle('hidden', view !== 'ui');
-        jsonResults.classList.toggle('active', view === 'json');
-    }
-
-    // ========== JSON Syntax Highlighting ==========
-    function syntaxHighlight(json) {
-        if (typeof json !== 'string') {
-            json = JSON.stringify(json, null, 2);
-        }
-        json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-            let cls = 'json-number';
-            if (/^"/.test(match)) {
-                if (/:$/.test(match)) {
-                    cls = 'json-key';
-                } else {
-                    cls = 'json-string';
-                }
-            } else if (/true|false/.test(match)) {
-                cls = 'json-boolean';
-            } else if (/null/.test(match)) {
-                cls = 'json-null';
-            }
-            return '<span class="' + cls + '">' + match + '</span>';
-        });
-    }
-
-    function renderJson() {
-        if (!rawResponse) {
-            jsonResults.innerHTML = '<div class="instructions">Выполните запрос, чтобы увидеть JSON ответ</div>';
-            return;
-        }
-        
-        const highlighted = syntaxHighlight(rawResponse);
-        jsonResults.innerHTML = `
-            <div class="json-container">
-                <button class="copy-json-btn" onclick="copyJson()">📋 Копировать</button>
-                <pre>${highlighted}</pre>
-            </div>
-        `;
-    }
-
-    function copyJson() {
-        if (!rawResponse) return;
-        
-        const text = JSON.stringify(rawResponse, null, 2);
-        navigator.clipboard.writeText(text).then(() => {
-            const btn = document.querySelector('.copy-json-btn');
-            btn.classList.add('copied');
-            btn.textContent = '✓ Скопировано';
-            setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.textContent = '📋 Копировать';
-            }, 2000);
-        });
-    }
-
-    // ========== Initialize App ==========
-    async function initApp() {
-        try {
-            const configResponse = await fetch(`${API_BASE}/debug/config/mapbox`);
-            const config = await configResponse.json();
-
-            if (!config.token) {
-                throw new Error('Mapbox token not configured');
-            }
-
-            mapboxgl.accessToken = config.token;
-
-            map = new mapboxgl.Map({
-                container: 'map',
-                style: '{{.MapStyle}}',
-                center: [{{.MapCenter.Lon}}, {{.MapCenter.Lat}}],
-                zoom: {{.MapZoom}}
-            });
-
-            map.addControl(new mapboxgl.NavigationControl(), 'top-right');
-            map.on('click', handleMapClick);
-
-            map.on('load', () => {
-                map.addSource('radius-circles', {
-                    type: 'geojson',
-                    data: { type: 'FeatureCollection', features: [] }
-                });
-
-                map.addLayer({
-                    id: 'radius-circles-fill',
-                    type: 'fill',
-                    source: 'radius-circles',
-                    paint: {
-                        'fill-color': '#00d4ff',
-                        'fill-opacity': 0.1
-                    }
-                });
-
-                map.addLayer({
-                    id: 'radius-circles-stroke',
-                    type: 'line',
-                    source: 'radius-circles',
-                    paint: {
-                        'line-color': '#00d4ff',
-                        'line-width': 2,
-                        'line-opacity': 0.5
-                    }
-                });
-            });
-
-            setupEventListeners();
-
-        } catch (error) {
-            console.error('Failed to initialize:', error);
-            uiResults.innerHTML = `
-                <div class="no-results" style="color: #ff6b6b;">
-                    Ошибка инициализации: ${error.message}
-                </div>
-            `;
-        }
-    }
-
-    // ========== Event Listeners ==========
-    function setupEventListeners() {
-        document.querySelectorAll('.method-card').forEach(card => {
-            card.addEventListener('click', () => {
-                document.querySelectorAll('.method-card').forEach(c => c.classList.remove('active'));
-                card.classList.add('active');
-                currentMethod = card.dataset.method;
-                updateUI();
-            });
-        });
-
-        executeBtn.addEventListener('click', executeRequest);
-        clearBtn.addEventListener('click', clearAll);
-        document.getElementById('param-radius').addEventListener('input', updateRadiusCircles);
-    }
-
-    // ========== UI Updates ==========
-    function updateUI() {
-        const method = METHODS[currentMethod];
-        typesGroup.style.display = method.showTypes ? 'block' : 'none';
-        
-        // Методы, которые не требуют точек на карте
-        const noPointsMethods = ['search', 'poi-categories', 'stats', 'health'];
-        const needsPoints = !noPointsMethods.includes(currentMethod) && !currentMethod.startsWith('tile-');
-        
-        if (needsPoints) {
-            const minPoints = method.isBatch ? 1 : 1;
-            executeBtn.disabled = searchPoints.length < minPoints;
-        } else {
-            executeBtn.disabled = false;
-        }
-        
-        pointsCountSpan.textContent = searchPoints.length;
-    }
-
-    // ========== Map Handlers ==========
-    function handleMapClick(e) {
-        const method = METHODS[currentMethod];
-        const { lng, lat } = e.lngLat;
-
-        if (!method.isBatch) {
-            clearSearchPoints();
-        }
-
-        addSearchPoint(lat, lng);
-        updateUI();
-    }
-
-    function addSearchPoint(lat, lng) {
-        const method = METHODS[currentMethod];
-
-        const el = document.createElement('div');
-        el.className = `search-marker${method.isBatch ? ' batch' : ''}`;
-
-        const marker = new mapboxgl.Marker(el)
-            .setLngLat([lng, lat])
-            .addTo(map);
-
-        searchPoints.push({ lat, lng });
-        searchMarkers.push(marker);
-
-        updateRadiusCircles();
-    }
-
-    function clearSearchPoints() {
-        searchMarkers.forEach(m => m.remove());
-        searchMarkers = [];
-        searchPoints = [];
-        updateRadiusCircles();
-    }
-
-    function clearStationMarkers() {
-        stationMarkers.forEach(m => m.remove());
-        stationMarkers = [];
-        if (activePopup) {
-            activePopup.remove();
-            activePopup = null;
-        }
-    }
-
-    function clearAll() {
-        clearSearchPoints();
-        clearStationMarkers();
-        results = null;
-        rawResponse = null;
-        uiResults.innerHTML = `
-            <div class="instructions">
-                <strong>Начало работы:</strong><br>
-                1. Выберите метод справа<br>
-                2. Кликните на карту для выбора точки(ек)<br>
-                3. Нажмите "Выполнить" для запроса<br>
-                4. Результаты появятся здесь
-            </div>
-        `;
-        jsonResults.innerHTML = '<div class="instructions">Выполните запрос, чтобы увидеть JSON ответ</div>';
-        updateUI();
-    }
-
-    function updateRadiusCircles() {
-        const radiusM = parseFloat(document.getElementById('param-radius').value) || 1500;
-
-        const features = searchPoints.map((point, idx) => {
-            return turf.circle([point.lng, point.lat], radiusM / 1000, {
-                steps: 64,
-                units: 'kilometers',
-                properties: { index: idx }
-            });
-        });
-
-        const source = map.getSource('radius-circles');
-        if (source) {
-            source.setData({
-                type: 'FeatureCollection',
-                features: features
-            });
-        }
-    }
-
-    // Simple turf.circle implementation
-    const turf = {
-        circle: function (center, radius, options) {
-            const steps = options.steps || 64;
-            const coords = [];
-            for (let i = 0; i < steps; i++) {
-                const angle = (i / steps) * 360;
-                const point = this.destination(center, radius, angle);
-                coords.push(point);
-            }
-            coords.push(coords[0]);
-            return {
-                type: 'Feature',
-                properties: options.properties || {},
-                geometry: {
-                    type: 'Polygon',
-                    coordinates: [coords]
-                }
-            };
-        },
-        destination: function (origin, distance, bearing) {
-            const R = 6371;
-            const d = distance / R;
-            const brng = bearing * Math.PI / 180;
-            const lat1 = origin[1] * Math.PI / 180;
-            const lon1 = origin[0] * Math.PI / 180;
-
-            const lat2 = Math.asin(
-                Math.sin(lat1) * Math.cos(d) +
-                Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
-            );
-            const lon2 = lon1 + Math.atan2(
-                Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
-                Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
-            );
-
-            return [lon2 * 180 / Math.PI, lat2 * 180 / Math.PI];
-        }
-    };
-
-    // ========== API Requests ==========
-    // Функция для формирования URL с параметрами
-    function buildUrl(endpoint, params, pathParams) {
-        let url = endpoint;
-        
-        // Заменяем path parameters
-        if (pathParams) {
-            Object.keys(pathParams).forEach(key => {
-                url = url.replace(`{${key}}`, pathParams[key]);
-            });
-        }
-        
-        // Добавляем query parameters
-        if (params && Object.keys(params).length > 0) {
-            const searchParams = new URLSearchParams(params);
-            url += '?' + searchParams.toString();
-        }
-        
-        return url;
-    }
-
-    async function executeRequest() {
-        const method = METHODS[currentMethod];
-
-        uiResults.innerHTML = '<div class="loading">Загрузка...</div>';
-        clearStationMarkers();
-
-        try {
-            let response;
-            const radius = parseFloat(document.getElementById('param-radius').value) || 1500;
-            const limit = parseInt(document.getElementById('param-limit').value) || 5;
-            const example = requestExamples[currentMethod] || {};
-
-            // Для методов, использующих точки на карте
-            if (searchPoints.length > 0) {
-                if (method.httpMethod === 'GET') {
-                    // GET запрос с параметрами
-                    const point = searchPoints[0];
-                    const params = {
-                        lat: point.lat,
-                        lon: point.lng,
-                        radius: radius,
-                        limit: limit,
-                        ...example.params
-                    };
-                    
-                    if (method.showTypes) {
-                        const types = getSelectedTypes();
-                        if (types.length > 0) {
-                            params.types = types.join(',');
-                        }
-                    }
-                    
-                    const url = buildUrl(method.endpoint, params, example.pathParams);
-                    response = await fetch(url);
-                } else if (method.httpMethod === 'POST' && method.isBatch) {
-                    // POST Batch запрос
-                    const body = {
-                        points: searchPoints.map(p => ({ lat: p.lat, lon: p.lng })),
-                        radius: radius,
-                        limit: limit,
-                        ...example.body
-                    };
-                    
-                    if (method.showTypes) {
-                        const types = getSelectedTypes();
-                        if (types.length > 0) {
-                            body.types = types;
-                        }
-                    }
-                    
-                    response = await fetch(buildUrl(method.endpoint, null, example.pathParams), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-                } else if (method.httpMethod === 'POST') {
-                    // POST Single запрос
-                    const point = searchPoints[0];
-                    const body = {
-                        lat: point.lat,
-                        lon: point.lng,
-                        max_distance: radius,
-                        radius: radius,
-                        limit: limit,
-                        ...example.body
-                    };
-                    
-                    if (method.showTypes) {
-                        const types = getSelectedTypes();
-                        if (types.length > 0) {
-                            body.types = types;
-                        }
-                    }
-                    
-                    response = await fetch(buildUrl(method.endpoint, null, example.pathParams), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-                }
-            } else {
-                // Методы без точек на карте (stats, health, categories, etc.)
-                if (method.httpMethod === 'GET') {
-                    const url = buildUrl(method.endpoint, example.params, example.pathParams);
-                    response = await fetch(url);
-                } else if (method.httpMethod === 'POST' && example.body) {
-                    response = await fetch(buildUrl(method.endpoint, null, example.pathParams), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(example.body)
-                    });
-                }
-            }
-
-            if (!response) {
-                throw new Error('Не удалось выполнить запрос. Проверьте параметры.');
-            }
-
-            // Для тайлов возвращается бинарный ответ
-            if (currentMethod.startsWith('tile-')) {
-                const blob = await response.blob();
-                rawResponse = { 
-                    success: true, 
-                    message: `Тайл получен (${blob.size} байт)`,
-                    contentType: response.headers.get('Content-Type')
-                };
-                uiResults.innerHTML = `
-                    <div class="meta-info">
-                        <span>Размер: <strong class="highlight">${blob.size} байт</strong></span>
-                        <span>Тип: ${response.headers.get('Content-Type')}</span>
-                    </div>
-                    <div class="instructions">
-                        Тайлы используются для отображения на картах.<br>
-                        Endpoint: <code>${method.endpoint}</code>
-                    </div>
+// ===================== LAYER INTERACTIVITY =====================
+function setupLayerInteractivity() {
+    // Transport station click
+    map.on('click', (e) => {
+        // Check transport stations first
+        if (map.getLayer('transport-stations-circle')) {
+            const stationFeatures = map.queryRenderedFeatures(e.point, { layers: ['transport-stations-circle'] });
+            if (stationFeatures.length > 0) {
+                const props = stationFeatures[0].properties;
+                const html = `
+                    <div class="popup-title">${props.name || 'Без названия'}</div>
+                    <div class="popup-type">${props.type || 'station'}</div>
+                    <div class="popup-detail">ID: ${props.id}</div>
                 `;
-                renderJson();
+                if (activePopup) activePopup.remove();
+                activePopup = new mapboxgl.Popup({ closeOnClick: true })
+                    .setLngLat(e.lngLat)
+                    .setHTML(html)
+                    .addTo(map);
+                return; // Don't process further
+            }
+        }
+
+        // Check POI
+        if (map.getLayer('poi-circles')) {
+            const poiFeatures = map.queryRenderedFeatures(e.point, { layers: ['poi-circles'] });
+            if (poiFeatures.length > 0) {
+                const props = poiFeatures[0].properties;
+                const html = `
+                    <div class="popup-title">${props.name || 'Без названия'}</div>
+                    <div class="popup-type">${props.category} / ${props.subcategory}</div>
+                    <div class="popup-detail">ID: ${props.id}</div>
+                `;
+                if (activePopup) activePopup.remove();
+                activePopup = new mapboxgl.Popup({ closeOnClick: true })
+                    .setLngLat(e.lngLat)
+                    .setHTML(html)
+                    .addTo(map);
                 return;
             }
-
-            rawResponse = await response.json();
-            console.log('API Response:', rawResponse);
-
-            if (rawResponse.success === false) {
-                throw new Error(rawResponse.error?.message || 'Unknown error');
-            }
-
-            results = rawResponse.data || rawResponse;
-            renderResults();
-            renderJson();
-
-        } catch (error) {
-            console.error('Request failed:', error);
-            uiResults.innerHTML = `
-                <div class="no-results" style="color: #ff6b6b;">
-                    Ошибка: ${error.message}
-                </div>
-            `;
-            rawResponse = { error: error.message };
-            renderJson();
         }
+
+        // Check boundaries
+        if (map.getLayer('boundary-fill')) {
+            const vis = map.getLayoutProperty('boundary-fill', 'visibility');
+            if (vis === 'visible') {
+                const bFeatures = map.queryRenderedFeatures(e.point, { layers: ['boundary-fill'] });
+                if (bFeatures.length > 0) {
+                    const props = bFeatures[0].properties;
+                    const html = `
+                        <div class="popup-title">${props.name || 'Без названия'}</div>
+                        <div class="popup-type">Admin level ${props.admin_level || '?'}</div>
+                        ${props.population ? `<div class="popup-detail">Население: ${Number(props.population).toLocaleString()}</div>` : ''}
+                    `;
+                    if (activePopup) activePopup.remove();
+                    activePopup = new mapboxgl.Popup({ closeOnClick: true })
+                        .setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                    return;
+                }
+            }
+        }
+
+        // No feature hit — proceed with map click (load data by point)
+        handleMapClick(e);
+    });
+
+    // Cursor style
+    map.on('mousemove', (e) => {
+        const interactiveLayers = ['transport-stations-circle', 'poi-circles'].filter(l => map.getLayer(l));
+        if (interactiveLayers.length === 0) {
+            map.getCanvas().style.cursor = '';
+            return;
+        }
+        const features = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
+        map.getCanvas().style.cursor = features.length > 0 ? 'pointer' : '';
+    });
+}
+
+// ===================== RADIUS CIRCLE =====================
+function addRadiusCircleSource() {
+    map.addSource('radius-circle', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+        id: 'radius-circle-fill',
+        type: 'fill',
+        source: 'radius-circle',
+        paint: { 'fill-color': '#58a6ff', 'fill-opacity': 0.08 }
+    });
+
+    map.addLayer({
+        id: 'radius-circle-stroke',
+        type: 'line',
+        source: 'radius-circle',
+        paint: { 'line-color': '#58a6ff', 'line-width': 1.5, 'line-opacity': 0.4, 'line-dasharray': [4, 3] }
+    });
+}
+
+function drawRadiusCircle(lat, lng, radiusM) {
+    const src = map.getSource('radius-circle');
+    if (!src) return;
+    src.setData({
+        type: 'FeatureCollection',
+        features: [createCircle([lng, lat], radiusM / 1000, 64)]
+    });
+}
+
+function clearRadiusCircle() {
+    const src = map.getSource('radius-circle');
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
+}
+
+function createCircle(center, radiusKm, steps) {
+    const coords = [];
+    for (let i = 0; i <= steps; i++) {
+        const angle = (i / steps) * 360;
+        coords.push(destPoint(center, radiusKm, angle));
+    }
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } };
+}
+
+function destPoint(origin, distKm, bearing) {
+    const R = 6371;
+    const d = distKm / R;
+    const b = bearing * Math.PI / 180;
+    const lat1 = origin[1] * Math.PI / 180;
+    const lon1 = origin[0] * Math.PI / 180;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b));
+    const lon2 = lon1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+    return [lon2 * 180 / Math.PI, lat2 * 180 / Math.PI];
+}
+
+// ===================== MAP CLICK =====================
+function handleMapClick(e) {
+    const { lat, lng } = e.lngLat;
+    clickPoint = { lat, lng };
+
+    // Place marker
+    if (clickMarker) clickMarker.remove();
+    const el = document.createElement('div');
+    el.className = 'click-marker';
+    clickMarker = new mapboxgl.Marker(el).setLngLat([lng, lat]).addTo(map);
+
+    // Draw radius
+    const radius = parseInt(document.getElementById('param-radius').value) || 1000;
+    drawRadiusCircle(lat, lng, radius);
+
+    // Load data
+    loadClickData(lat, lng);
+}
+
+// ===================== LOAD DATA BY CLICK =====================
+async function loadClickData(lat, lng) {
+    const resultsEl = document.getElementById('click-results');
+    resultsEl.innerHTML = '<div class="loading-inline"><div class="spinner"></div>Загрузка данных...</div>';
+
+    // Clear old markers
+    clearResultMarkers();
+
+    const radius = parseInt(document.getElementById('param-radius').value) || 1000;
+    const limit = parseInt(document.getElementById('param-limit').value) || 10;
+    const types = getSelectedTransportTypes();
+    const cats = getSelectedPOICategories();
+    const subs = getSelectedPOISubcategories();
+
+    try {
+        // Parallel requests
+        const promises = [];
+
+        // 1. Reverse geocode
+        promises.push(
+            fetch(`${API}/reverse-geocode`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat, lon: lng })
+            }).then(r => r.json()).catch(() => null)
+        );
+
+        // 2. Nearest transport
+        if (types.length > 0) {
+            promises.push(
+                fetch(`${API}/transport/nearest`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat, lon: lng, max_distance: radius, types, limit })
+                }).then(r => r.json()).catch(() => null)
+            );
+        } else {
+            promises.push(Promise.resolve(null));
+        }
+
+        // 3. POI by radius
+        if (cats.length > 0 || subs.length > 0) {
+            const poiBody = { lat, lon: lng, radius, limit: limit * 2 };
+            if (cats.length > 0) poiBody.categories = cats;
+            if (subs.length > 0) poiBody.subcategories = subs;
+            promises.push(
+                fetch(`${API}/radius/poi`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(poiBody)
+                }).then(r => r.json()).catch(() => null)
+            );
+        } else {
+            promises.push(Promise.resolve(null));
+        }
+
+        const [geocodeRes, transportRes, poiRes] = await Promise.all(promises);
+
+        let html = '';
+
+        // Geocode result
+        if (geocodeRes && geocodeRes.data) {
+            html += renderGeocodeResult(geocodeRes.data);
+        }
+
+        // Transport results
+        if (transportRes && transportRes.data) {
+            const stations = transportRes.data.stations || transportRes.data.transport || [];
+            html += renderTransportResults(stations);
+        }
+
+        // POI results
+        if (poiRes && poiRes.data) {
+            const pois = poiRes.data.pois || poiRes.data.results || poiRes.data || [];
+            if (Array.isArray(pois)) {
+                html += renderPOIResults(pois);
+            }
+        }
+
+        if (!html) {
+            html = '<div class="hint">Нет данных для этой точки</div>';
+        }
+
+        resultsEl.innerHTML = html;
+
+        // Click handlers on result cards
+        resultsEl.querySelectorAll('.result-card[data-lat]').forEach(card => {
+            card.addEventListener('click', () => {
+                const lt = parseFloat(card.dataset.lat);
+                const ln = parseFloat(card.dataset.lon);
+                map.flyTo({ center: [ln, lt], zoom: Math.max(map.getZoom(), 15), duration: 800 });
+            });
+        });
+
+    } catch (err) {
+        resultsEl.innerHTML = `<div class="error-msg">Ошибка: ${err.message}</div>`;
+    }
+}
+
+function clearResultMarkers() {
+    stationMarkers.forEach(m => m.remove());
+    stationMarkers = [];
+    poiMarkers.forEach(m => m.remove());
+    poiMarkers = [];
+}
+
+// ===================== RENDER RESULTS =====================
+function renderGeocodeResult(data) {
+    // data can be boundaries array or nested object
+    let boundaries = [];
+    if (Array.isArray(data)) {
+        boundaries = data;
+    } else if (data.boundaries) {
+        boundaries = data.boundaries;
+    } else if (data.address || data.city || data.country) {
+        // Single result
+        return `
+            <div class="result-section">
+                <div class="result-section-title">📍 Адрес</div>
+                <div class="geocode-result">
+                    ${data.country ? `<div class="gr-row"><span class="gr-label">Страна</span><span class="gr-value">${data.country}</span></div>` : ''}
+                    ${data.region ? `<div class="gr-row"><span class="gr-label">Регион</span><span class="gr-value">${data.region}</span></div>` : ''}
+                    ${data.city ? `<div class="gr-row"><span class="gr-label">Город</span><span class="gr-value">${data.city}</span></div>` : ''}
+                    ${data.district ? `<div class="gr-row"><span class="gr-label">Район</span><span class="gr-value">${data.district}</span></div>` : ''}
+                    ${data.neighbourhood ? `<div class="gr-row"><span class="gr-label">Neighbourhood</span><span class="gr-value">${data.neighbourhood}</span></div>` : ''}
+                </div>
+            </div>`;
     }
 
-    function getSelectedTypes() {
-        const select = document.getElementById('param-types');
-        return Array.from(select.selectedOptions).map(o => o.value);
+    if (boundaries.length > 0) {
+        let html = '<div class="result-section"><div class="result-section-title">📍 Границы <span class="count">' + boundaries.length + '</span></div>';
+        boundaries.forEach(b => {
+            html += `<div class="geocode-result">
+                <div class="gr-row"><span class="gr-label">Название</span><span class="gr-value">${b.name || b.local_name || '-'}</span></div>
+                <div class="gr-row"><span class="gr-label">Level</span><span class="gr-value">${b.admin_level || '-'}</span></div>
+                ${b.name_en ? `<div class="gr-row"><span class="gr-label">EN</span><span class="gr-value">${b.name_en}</span></div>` : ''}
+            </div>`;
+        });
+        html += '</div>';
+        return html;
     }
 
-    // ========== Render Results ==========
-    function renderResults() {
-        const method = METHODS[currentMethod];
+    return '';
+}
 
-        if (!results) {
-            uiResults.innerHTML = '<div class="no-results">Нет результатов</div>';
+function renderTransportResults(stations) {
+    if (!stations || stations.length === 0) return '';
+
+    let html = `<div class="result-section">
+        <div class="result-section-title">🚇 Транспорт <span class="count">${stations.length}</span></div>`;
+
+    stations.forEach(s => {
+        const type = s.type || 'station';
+        const dist = s.linear_distance || s.distance || 0;
+        const walkDist = s.walking_distance || Math.round(dist * 1.3);
+        const walkTime = s.walking_time || (walkDist / 83);
+
+        // Add marker
+        const el = document.createElement('div');
+        el.className = `station-dot ${type}`;
+        const marker = new mapboxgl.Marker(el).setLngLat([s.lon, s.lat]).addTo(map);
+        stationMarkers.push(marker);
+
+        let linesHtml = '';
+        if (s.lines && s.lines.length > 0) {
+            linesHtml = '<div class="rc-lines">';
+            s.lines.forEach(l => {
+                const bg = l.color || TRANSPORT_COLORS[type] || '#30363d';
+                linesHtml += `<span class="line-badge" style="background:${bg}">${l.ref || l.name || l.type || ''}</span>`;
+            });
+            linesHtml += '</div>';
+        }
+
+        html += `
+            <div class="result-card ${type}" data-lat="${s.lat}" data-lon="${s.lon}">
+                <div class="rc-name">${s.name || 'Без названия'}</div>
+                <div class="rc-meta">
+                    <span class="type-badge ${type}">${type}</span>
+                    <span>📏 ${Math.round(dist)}м</span>
+                    <span>🚶 ${Math.round(walkDist)}м</span>
+                    <span>⏱️ ${walkTime.toFixed(1)}мин</span>
+                </div>
+                ${linesHtml}
+            </div>`;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function renderPOIResults(pois) {
+    if (!pois || pois.length === 0) return '';
+
+    let html = `<div class="result-section">
+        <div class="result-section-title">📌 POI <span class="count">${pois.length}</span></div>`;
+
+    pois.forEach(p => {
+        const cat = p.category || '';
+        const sub = p.subcategory || '';
+        const dist = p.distance || 0;
+
+        // Add marker
+        if (p.lon && p.lat) {
+            const el = document.createElement('div');
+            el.className = `poi-dot ${cat}`;
+            const marker = new mapboxgl.Marker(el).setLngLat([p.lon, p.lat]).addTo(map);
+            poiMarkers.push(marker);
+        }
+
+        html += `
+            <div class="result-card ${cat}" data-lat="${p.lat || ''}" data-lon="${p.lon || ''}">
+                <div class="rc-name">${p.name || 'Без названия'}</div>
+                <div class="rc-meta">
+                    <span class="type-badge" style="background:${hexAlpha(POI_COLORS[cat] || '#888', 0.2)};color:${POI_COLORS[cat] || '#888'}">${sub || cat}</span>
+                    ${dist ? `<span>📏 ${Math.round(dist)}м</span>` : ''}
+                </div>
+            </div>`;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function hexAlpha(hex, alpha) {
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ===================== SEARCH =====================
+async function doSearch() {
+    const q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+
+    const resultsEl = document.getElementById('search-results');
+    resultsEl.innerHTML = '<div class="loading-inline"><div class="spinner"></div>Поиск...</div>';
+
+    try {
+        const resp = await fetch(`${API}/search?q=${encodeURIComponent(q)}&language=en&limit=15`);
+        const data = await resp.json();
+
+        const items = data.data?.boundaries || data.data || [];
+
+        if (!items.length) {
+            resultsEl.innerHTML = '<div class="hint">Ничего не найдено</div>';
             return;
         }
 
         let html = '';
+        items.forEach(item => {
+            const name = item.name || item.local_name || item.name_en || '-';
+            const level = item.admin_level ? `Level ${item.admin_level}` : '';
+            const pop = item.population ? `Pop: ${Number(item.population).toLocaleString()}` : '';
+            const info = [level, pop, item.name_en].filter(Boolean).join(' · ');
 
-        if (method.isBatch) {
-            html = renderBatchResults();
-        } else {
-            html = renderSingleResults();
-        }
+            html += `<div class="search-result-item" data-id="${item.osm_id || item.id || ''}" 
+                          data-lat="${item.lat || item.center_lat || ''}" 
+                          data-lon="${item.lon || item.center_lon || ''}">
+                <div class="sr-name">${name}</div>
+                ${info ? `<div class="sr-info">${info}</div>` : ''}
+            </div>`;
+        });
 
-        uiResults.innerHTML = html;
+        resultsEl.innerHTML = html;
 
-        document.querySelectorAll('.station-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const lat = parseFloat(item.dataset.lat);
-                const lon = parseFloat(item.dataset.lon);
-                map.flyTo({ center: [lon, lat], zoom: 16, duration: 1000 });
+        resultsEl.querySelectorAll('.search-result-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const lat = parseFloat(el.dataset.lat);
+                const lon = parseFloat(el.dataset.lon);
+                const id = el.dataset.id;
+
+                if (lat && lon) {
+                    map.flyTo({ center: [lon, lat], zoom: 13, duration: 1000 });
+                }
+
+                // Try to load boundary by ID and zoom to bbox
+                if (id) {
+                    fetch(`${API}/boundaries/${id}`)
+                        .then(r => r.json())
+                        .then(resp => {
+                            const b = resp.data;
+                            if (b && b.bbox) {
+                                map.fitBounds([[b.bbox[0], b.bbox[1]], [b.bbox[2], b.bbox[3]]], { padding: 40 });
+                            }
+                        })
+                        .catch(() => {});
+                }
             });
         });
+
+    } catch (err) {
+        resultsEl.innerHTML = `<div class="error-msg">Ошибка: ${err.message}</div>`;
     }
+}
 
-    function renderSingleResults() {
-        const stations = results.stations || results.transport || [];
-        const meta = results.meta || {};
+// ===================== EVENT LISTENERS =====================
+function setupEventListeners() {
+    // Search
+    document.getElementById('search-btn').addEventListener('click', doSearch);
+    document.getElementById('search-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doSearch();
+    });
 
-        let html = `
-            <div class="meta-info">
-                <span>Найдено: <strong class="highlight">${meta.total_found || stations.length}</strong></span>
-                <span>Радиус: ${meta.radius_m || '-'}м</span>
-                ${meta.priority_type ? `<span>Тип: <strong class="highlight">${meta.priority_type}</strong></span>` : ''}
-            </div>
-        `;
+    // Boundary layer toggle
+    document.getElementById('layer-boundaries').addEventListener('change', e => {
+        toggleBoundaryLayer(e.target.checked);
+    });
 
-        if (stations.length === 0) {
-            html += '<div class="no-results">Станции не найдены в указанном радиусе</div>';
-            return html;
-        }
-
-        html += '<div class="result-point">';
-        html += '<div class="result-point-content">';
-
-        stations.forEach((station, idx) => {
-            html += renderStationCard(station, idx);
-            addStationMarker(station);
+    // Transport type toggles
+    document.querySelectorAll('[data-transport]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            refreshTransportTiles();
         });
+    });
 
-        html += '</div></div>';
-        return html;
-    }
-
-    function renderBatchResults() {
-        const batchResults = results.results || [];
-        const meta = results.meta || {};
-
-        let html = `
-            <div class="meta-info">
-                <span>Точек: <strong class="highlight">${meta.total_points || batchResults.length}</strong></span>
-                <span>Станций: <strong class="highlight">${meta.total_stations || '-'}</strong></span>
-                <span>Радиус: ${meta.radius_m || '-'}м</span>
-            </div>
-        `;
-
-        if (batchResults.length === 0) {
-            html += '<div class="no-results">Нет результатов</div>';
-            return html;
-        }
-
-        batchResults.forEach((pointResult, pointIdx) => {
-            const searchPoint = pointResult.search_point || {};
-            const stations = pointResult.stations || [];
-
-            html += `
-                <div class="result-point">
-                    <div class="result-point-header">
-                        <h4>Точка ${pointIdx + 1}</h4>
-                        <span class="coords">${searchPoint.lat?.toFixed(5)}, ${searchPoint.lon?.toFixed(5)}</span>
-                    </div>
-                    <div class="result-point-content">
-            `;
-
-            if (stations.length === 0) {
-                html += '<div class="no-results" style="padding: 10px;">Станции не найдены</div>';
-            } else {
-                stations.forEach((station, stationIdx) => {
-                    html += renderStationCard(station, `${pointIdx}-${stationIdx}`);
-                    addStationMarker(station);
+    // POI category toggles — check/uncheck all subcategories and refresh POI tiles
+    document.querySelectorAll('[data-poi]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const cat = cb.dataset.poi;
+            const subList = document.querySelector(`.subcategory-list[data-parent="${cat}"]`);
+            if (subList) {
+                subList.classList.toggle('open', cb.checked);
+                subList.querySelectorAll('input[data-poi-sub]').forEach(sub => {
+                    sub.checked = cb.checked;
                 });
             }
-
-            html += '</div></div>';
+            refreshPOITiles();
         });
+    });
 
-        return html;
-    }
-
-    function renderStationCard(station, idx) {
-        const type = station.type || 'station';
-        const linearDist = station.linear_distance || station.distance || 0;
-        const walkingDist = station.walking_distance || linearDist * 1.2;
-        const walkingTime = station.walking_time || (walkingDist / 83.3);
-
-        let linesHtml = '';
-        if (station.lines && station.lines.length > 0) {
-            linesHtml = '<div class="station-lines">';
-            station.lines.forEach(line => {
-                const bgColor = line.color || getTypeColor(type);
-                const displayName = line.ref || line.name || line.type;
-                linesHtml += `
-                    <span class="line-badge" style="background: ${bgColor}">
-                        ${line.ref ? `<span class="line-ref">${line.ref}</span>` : ''}
-                        ${line.name && line.name !== line.ref ? line.name : (line.type || '')}
-                    </span>
-                `;
-            });
-            linesHtml += '</div>';
-        }
-
-        return `
-            <div class="station-item ${type}" data-idx="${idx}" data-lat="${station.lat}" data-lon="${station.lon}">
-                <div class="station-name">${station.name}</div>
-                <span class="station-type ${type}">${type}</span>
-                <div class="station-distances">
-                    <span>📏 ${linearDist.toFixed(0)}м</span>
-                    <span>🚶 ${walkingDist.toFixed(0)}м</span>
-                    <span>⏱️ ${walkingTime.toFixed(1)} мин</span>
-                </div>
-                ${linesHtml}
-            </div>
-        `;
-    }
-
-    function addStationMarker(station) {
-        const el = document.createElement('div');
-        el.className = `station-marker ${station.type || 'station'}`;
-
-        const marker = new mapboxgl.Marker(el)
-            .setLngLat([station.lon, station.lat])
-            .addTo(map);
-
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showStationPopup(station);
+    // POI subcategory toggles
+    document.querySelectorAll('[data-poi-sub]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            // Update parent checkbox state
+            const cat = cb.dataset.cat;
+            const parentCb = document.querySelector(`[data-poi="${cat}"]`);
+            const allSubs = document.querySelectorAll(`[data-poi-sub][data-cat="${cat}"]`);
+            const checkedSubs = document.querySelectorAll(`[data-poi-sub][data-cat="${cat}"]:checked`);
+            if (parentCb) {
+                parentCb.checked = checkedSubs.length > 0;
+                parentCb.indeterminate = checkedSubs.length > 0 && checkedSubs.length < allSubs.length;
+            }
+            refreshPOITiles();
         });
+    });
 
-        stationMarkers.push(marker);
-    }
+    // Environment layer toggles
+    document.querySelectorAll('[data-env]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            toggleEnvLayer(cb.dataset.env, cb.checked);
+        });
+    });
 
-    function showStationPopup(station) {
-        if (activePopup) {
-            activePopup.remove();
+    // Radius change -> redraw circle
+    document.getElementById('param-radius').addEventListener('input', () => {
+        if (clickPoint) {
+            const radius = parseInt(document.getElementById('param-radius').value) || 1000;
+            drawRadiusCircle(clickPoint.lat, clickPoint.lng, radius);
         }
+    });
+}
 
-        let linesHtml = '';
-        if (station.lines && station.lines.length > 0) {
-            linesHtml = '<div class="popup-lines">';
-            station.lines.forEach(line => {
-                const bgColor = line.color || getTypeColor(station.type);
-                linesHtml += `
-                    <span class="line-badge" style="background: ${bgColor}">
-                        ${line.ref || line.name}
-                    </span>
-                `;
-            });
-            linesHtml += '</div>';
-        }
+// ===================== PANEL TOGGLE =====================
+function togglePanel(panelId) {
+    document.getElementById(panelId).classList.toggle('collapsed');
+}
 
-        const linearDist = station.linear_distance || station.distance || 0;
-        const walkingDist = station.walking_distance || linearDist * 1.2;
-        const walkingTime = station.walking_time || (walkingDist / 83.3);
-
-        activePopup = new mapboxgl.Popup({ closeOnClick: false })
-            .setLngLat([station.lon, station.lat])
-            .setHTML(`
-                <div class="popup-title">${station.name}</div>
-                <div class="popup-type">${station.type}</div>
-                <div class="popup-distance">
-                    📏 ${linearDist.toFixed(0)}м · 
-                    🚶 ${walkingDist.toFixed(0)}м · 
-                    ⏱️ ${walkingTime.toFixed(1)} мин
-                </div>
-                ${linesHtml}
-            `)
-            .addTo(map);
-    }
-
-    function getTypeColor(type) {
-        const colors = {
-            metro: '#d32f2f',
-            train: '#0288d1',
-            tram: '#f57c00',
-            bus: '#388e3c',
-            ferry: '#7b1fa2'
-        };
-        return colors[type] || '#666';
-    }
-
-    // ========== Initialize ==========
-    document.addEventListener('DOMContentLoaded', initApp);
+// ===================== START =====================
+document.addEventListener('DOMContentLoaded', initApp);
 </script>
 {{end}}

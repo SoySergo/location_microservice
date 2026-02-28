@@ -51,7 +51,7 @@ func NewServer(
 	})
 
 	// Создаём API Explorer handler
-	apiExplorerHandler, err := handler.NewAPIExplorerHandler()
+	apiExplorerHandler, err := handler.NewAPIExplorerHandler(cfg.Mapbox.AccessToken)
 	if err != nil {
 		logger.Warn("Failed to initialize API Explorer handler, falling back to static file", zap.Error(err))
 	}
@@ -165,7 +165,7 @@ func (s *Server) setupRoutes() {
 	api.Get("/transport/priority", s.enrichedLocationHandler.GetPriorityTransport)
 	api.Post("/transport/priority/batch", s.enrichedLocationHandler.GetPriorityTransportBatch)
 
-	// // Mapbox config endpoint for debug map UI
+	// // Mapbox config endpoint removed — token is embedded in template
 	// debug := api.Group("/debug")
 	// debug.Get("/config/mapbox", func(c *fiber.Ctx) error {
 	// 	return c.JSON(fiber.Map{

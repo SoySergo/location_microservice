@@ -146,8 +146,7 @@ func (h *TileHandler) GetWaterTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	c.Set("Content-Encoding", "gzip")
+	c.Set("Content-Type", "application/x-protobuf")
 	c.Set("Cache-Control", "public, max-age=86400")
 	return c.Send(tile)
 }
@@ -181,8 +180,7 @@ func (h *TileHandler) GetBeachesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	c.Set("Content-Encoding", "gzip")
+	c.Set("Content-Type", "application/x-protobuf")
 	c.Set("Cache-Control", "public, max-age=86400")
 	return c.Send(tile)
 }
@@ -210,8 +208,7 @@ func (h *TileHandler) GetNoiseSourcesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	c.Set("Content-Encoding", "gzip")
+	c.Set("Content-Type", "application/x-protobuf")
 	c.Set("Cache-Control", "public, max-age=86400")
 	return c.Send(tile)
 }
@@ -245,8 +242,7 @@ func (h *TileHandler) GetTouristZonesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	c.Set("Content-Encoding", "gzip")
+	c.Set("Content-Type", "application/x-protobuf")
 	c.Set("Cache-Control", "public, max-age=86400")
 	return c.Send(tile)
 }

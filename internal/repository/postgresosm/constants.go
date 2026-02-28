@@ -37,4 +37,28 @@ const (
 
 	// subcategoryExpr - определяет подкатегорию из дополнительных тегов
 	subcategoryExpr = "COALESCE(NULLIF(tags->'cuisine',''), NULLIF(tags->'sport',''), NULLIF(tags->'religion',''), NULLIF(tags->'denomination',''), NULLIF(tags->'building',''), NULLIF(shop,''), NULLIF(tourism,''), 'general')"
+
+	// tileCategoryExpr - маппинг OSM тегов в категории приложения (для тайлов и фильтрации)
+	tileCategoryExpr = `CASE
+		WHEN amenity IN ('pharmacy','hospital','clinic','doctors','dentist','veterinary') THEN 'healthcare'
+		WHEN amenity IN ('school','kindergarten','college','university','library','language_school') THEN 'education'
+		WHEN amenity IN ('restaurant','cafe','bar','fast_food') THEN 'food_drink'
+		WHEN shop IN ('supermarket','convenience','mall','grocery','department_store','bakery','butcher','greengrocer') THEN 'shopping'
+		WHEN leisure IN ('park','garden','playground','sports_centre') THEN 'leisure'
+		WHEN tourism IN ('attraction','viewpoint','museum') THEN 'leisure'
+		WHEN historic IN ('monument','castle') THEN 'leisure'
+		ELSE 'other'
+	END`
+
+	// tileSubcategoryExpr - подкатегория = значение OSM тега (pharmacy, hospital, supermarket, etc.)
+	tileSubcategoryExpr = `CASE
+		WHEN amenity IN ('pharmacy','hospital','clinic','doctors','dentist','veterinary',
+			'school','kindergarten','college','university','library','language_school',
+			'restaurant','cafe','bar','fast_food') THEN amenity
+		WHEN shop IN ('supermarket','convenience','mall','grocery','department_store','bakery','butcher','greengrocer') THEN shop
+		WHEN leisure IN ('park','garden','playground','sports_centre') THEN leisure
+		WHEN tourism IN ('attraction','viewpoint','museum') THEN tourism
+		WHEN historic IN ('monument','castle') THEN historic
+		ELSE 'general'
+	END`
 )

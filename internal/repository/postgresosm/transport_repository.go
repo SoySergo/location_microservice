@@ -270,10 +270,17 @@ func (r *transportRepository) GetTransportTile(ctx context.Context, z, x, y int)
 			SELECT 
 				osm_id AS id,
 				COALESCE(name, '') AS name,
-				COALESCE(NULLIF(public_transport, ''), NULLIF(railway, ''), 'station') AS type,
+				CASE
+					WHEN railway = 'station' AND (tags->'station' = 'subway' OR tags->'subway' = 'yes') THEN 'subway'
+					WHEN railway = 'tram_stop' OR (railway = 'station' AND tags->'station' = 'light_rail') THEN 'tram_stop'
+					WHEN highway = 'bus_stop' OR (public_transport IN ('platform', 'stop_position') AND tags->'bus' = 'yes') THEN 'bus_stop'
+					WHEN railway IN ('station', 'halt') THEN 'station'
+					WHEN public_transport IS NOT NULL THEN COALESCE(NULLIF(public_transport, ''), 'stop')
+					ELSE 'station'
+				END AS type,
 				ST_AsMVTGeom(way, bounds.geom, $4, $5, true) AS geom
 			FROM %s, bounds
-			WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop'))
+			WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop') OR highway = 'bus_stop')
 			  AND way && bounds.geom
 		)
 		SELECT COALESCE(ST_AsMVT(stations.*, 'stations'), '\\x'::bytea) AS tile
@@ -650,17 +657,38 @@ func (r *transportRepository) GetTransportRadiusTile(ctx context.Context, lat, l
 // GetTransportTileByTypes генерирует MVT тайл для транспорта с фильтрацией по типам
 func (r *transportRepository) GetTransportTileByTypes(ctx context.Context, z, x, y int, types []string) ([]byte, error) {
 	args := []interface{}{z, x, y, MVTExtent, MVTBuffer}
-	argOffset := 6
 
-	typeFilter := ""
+	// Построение фильтра станций из типов с использованием buildTransportTypeFilter
+	stationTypeFilter := ""
 	if len(types) > 0 {
-		placeholders := make([]string, len(types))
-		for i, t := range types {
-			placeholders[i] = fmt.Sprintf("$%d", argOffset+i)
-			args = append(args, t)
+		filters := make([]string, 0, len(types))
+		for _, t := range types {
+			filters = append(filters, buildTransportTypeFilter(t))
 		}
-		typeFilter = fmt.Sprintf(" AND (public_transport IN (%s) OR railway IN (%s) OR route IN (%s))",
-			strings.Join(placeholders, ","), strings.Join(placeholders, ","), strings.Join(placeholders, ","))
+		stationTypeFilter = " AND (" + strings.Join(filters, " OR ") + ")"
+	}
+
+	// Построение фильтра линий (маппинг типов на route значения OSM)
+	lineTypeFilter := ""
+	if len(types) > 0 {
+		routeValues := make([]string, 0, len(types))
+		for _, t := range types {
+			switch t {
+			case "metro", "subway":
+				routeValues = append(routeValues, "'subway'")
+			case "bus":
+				routeValues = append(routeValues, "'bus'")
+			case "tram", "light_rail":
+				routeValues = append(routeValues, "'tram'", "'light_rail'")
+			case "train", "rail", "cercania", "long_distance":
+				routeValues = append(routeValues, "'train'")
+			case "ferry":
+				routeValues = append(routeValues, "'ferry'")
+			}
+		}
+		if len(routeValues) > 0 {
+			lineTypeFilter = fmt.Sprintf(" AND route IN (%s)", strings.Join(routeValues, ","))
+		}
 	}
 
 	// Станции
@@ -672,16 +700,23 @@ func (r *transportRepository) GetTransportTileByTypes(ctx context.Context, z, x,
 			SELECT 
 				osm_id AS id,
 				COALESCE(name, '') AS name,
-				COALESCE(NULLIF(public_transport, ''), NULLIF(railway, ''), 'station') AS type,
+				CASE
+					WHEN railway = 'station' AND (tags->'station' = 'subway' OR tags->'subway' = 'yes') THEN 'subway'
+					WHEN railway = 'tram_stop' OR (railway = 'station' AND tags->'station' = 'light_rail') THEN 'tram_stop'
+					WHEN highway = 'bus_stop' OR (public_transport IN ('platform', 'stop_position') AND tags->'bus' = 'yes') THEN 'bus_stop'
+					WHEN railway IN ('station', 'halt') THEN 'station'
+					WHEN public_transport IS NOT NULL THEN COALESCE(NULLIF(public_transport, ''), 'stop')
+					ELSE 'station'
+				END AS type,
 				ST_AsMVTGeom(way, bounds.geom, $4, $5, true) AS geom
 			FROM %s, bounds
-			WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop'))
+			WHERE (public_transport IS NOT NULL OR railway IN ('station', 'halt', 'stop') OR highway = 'bus_stop')
 			  AND way && bounds.geom%s
 		)
 		SELECT COALESCE(ST_AsMVT(stations.*, 'stations'), '\\x'::bytea) AS tile
 		FROM stations
 		WHERE geom IS NOT NULL
-	`, planetPointTable, typeFilter)
+	`, planetPointTable, stationTypeFilter)
 
 	var stationsTile []byte
 	err := r.db.QueryRowContext(ctx, stationsQuery, args...).Scan(&stationsTile)
@@ -710,7 +745,7 @@ func (r *transportRepository) GetTransportTileByTypes(ctx context.Context, z, x,
 		SELECT COALESCE(ST_AsMVT(lines.*, 'lines'), '\\x'::bytea) AS tile
 		FROM lines
 		WHERE geom IS NOT NULL
-	`, planetLineTable, typeFilter)
+	`, planetLineTable, lineTypeFilter)
 
 	var linesTile []byte
 	err = r.db.QueryRowContext(ctx, linesQuery, args...).Scan(&linesTile)

@@ -91,7 +91,6 @@ func (h *POITileHandler) GetPOITile(c *fiber.Ctx) error {
 
 	// Устанавливаем заголовки
 	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Content-Encoding", "gzip")
 	c.Set("Cache-Control", "public, max-age=3600")
 
 	return c.Send(tile)

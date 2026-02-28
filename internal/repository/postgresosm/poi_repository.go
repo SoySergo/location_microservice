@@ -39,6 +39,18 @@ var (
 			way
 		FROM %s
 	`, categoryExpr, subcategoryExpr, SRID4326, SRID4326, planetPointTable)
+
+	// poiTileSelect - для тайлов с маппингом категорий
+	poiTileSelect = fmt.Sprintf(`
+		SELECT
+			osm_id,
+			COALESCE(name, '') AS name,
+			%s AS category,
+			%s AS subcategory,
+			way
+		FROM %s
+		WHERE (%s) != 'other'
+	`, tileCategoryExpr, tileSubcategoryExpr, planetPointTable, tileCategoryExpr)
 )
 
 type poiRepository struct {
@@ -405,7 +417,7 @@ func (r *poiRepository) GetPOITile(ctx context.Context, z, x, y int, categories 
 		SELECT COALESCE(ST_AsMVT(mvt_geom.*, 'pois'), '\\x') AS tile
 		FROM mvt_geom
 		WHERE geom IS NOT NULL
-	`, poiSelectLite, categoryFilter, limit)
+	`, poiTileSelect, categoryFilter, limit)
 
 	var tile []byte
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)
@@ -591,7 +603,7 @@ func (r *poiRepository) GetPOITileByCategories(ctx context.Context, z, x, y int,
 		SELECT COALESCE(ST_AsMVT(mvt_geom.*, 'pois'), '\\x') AS tile
 		FROM mvt_geom
 		WHERE geom IS NOT NULL
-	`, poiSelectLite, filterClause, limit)
+	`, poiTileSelect, filterClause, limit)
 
 	var tile []byte
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&tile)

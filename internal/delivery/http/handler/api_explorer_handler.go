@@ -11,6 +11,7 @@ import (
 type APIExplorerData struct {
 	Title         string
 	DefaultMethod string
+	MapboxToken   string
 	MapStyle      string
 	MapCenter     MapCenterCoords
 	MapZoom       int
@@ -38,11 +39,12 @@ type APIMethodDef struct {
 
 // APIExplorerHandler - хендлер для рендеринга API Explorer
 type APIExplorerHandler struct {
-	templates *template.Template
+	templates   *template.Template
+	mapboxToken string
 }
 
 // NewAPIExplorerHandler - создание нового хендлера API Explorer
-func NewAPIExplorerHandler() (*APIExplorerHandler, error) {
+func NewAPIExplorerHandler(mapboxToken string) (*APIExplorerHandler, error) {
 	// Загружаем все шаблоны из директории templates/api-explorer
 	tmpl, err := template.ParseGlob(filepath.Join("templates", "api-explorer", "*.html"))
 	if err != nil {
@@ -50,7 +52,8 @@ func NewAPIExplorerHandler() (*APIExplorerHandler, error) {
 	}
 
 	return &APIExplorerHandler{
-		templates: tmpl,
+		templates:   tmpl,
+		mapboxToken: mapboxToken,
 	}, nil
 }
 
@@ -342,6 +345,7 @@ func (h *APIExplorerHandler) RenderExplorer(c *fiber.Ctx) error {
 	data := APIExplorerData{
 		Title:         "API Explorer",
 		DefaultMethod: "search",
+		MapboxToken:   h.mapboxToken,
 		MapStyle:      "mapbox://styles/serhii11/cmhuvoz2c001o01sfgppw7m5n",
 		MapCenter: MapCenterCoords{
 			Lat: 41.3851,
