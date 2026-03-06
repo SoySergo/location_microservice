@@ -120,7 +120,7 @@ func TestEnrichedLocationUseCase_EnrichLocationBatch_Success(t *testing.T) {
 	mockTransport.On("GetNearestTransportByPriorityBatch", ctx,
 		mock.MatchedBy(func(points []domain.TransportSearchPoint) bool {
 			return len(points) == 1
-		}), 1500.0, 5).
+		}), float64(usecase.DefaultTransportRadius), usecase.DefaultTransportLimit).
 		Return(batchResults, nil)
 
 	// Act

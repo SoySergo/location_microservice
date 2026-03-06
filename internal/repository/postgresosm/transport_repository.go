@@ -1156,9 +1156,9 @@ func (r *transportRepository) GetNearestTransportByPriority(
 		radiusM = 1500 // default 1.5km
 	}
 
-	// SQL запрос с приоритизацией и заполнением до лимита:
-	// 1. Сначала берём все metro/train (высокий приоритет)
-	// 2. Если их меньше лимита - добирваем bus/tram до лимита
+	// SQL запрос с 4-уровневой приоритизацией и заполнением до лимита:
+	// Приоритет: metro(1) > train(2) > tram(3) > bus(4)
+	// Заполняем слоты от высшего приоритета к низшему, внутри ранга — по расстоянию
 	// Группируем по нормализованному имени чтобы убрать дубликаты выходов
 	// Используем way_geog (предвычисленная geography колонка) для быстрого пространственного поиска
 	query := fmt.Sprintf(`
@@ -1185,10 +1185,10 @@ func (r *transportRepository) GetNearestTransportByPriority(
 				LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-zA-Zа-яА-Я0-9]', '', 'g')) AS normalized_name,
 				CASE 
 					WHEN railway = 'station' AND (tags->'station' = 'subway' OR tags->'subway' = 'yes') THEN 1
-					WHEN railway IN ('station', 'halt') THEN 1
-					WHEN railway = 'tram_stop' THEN 2
-					WHEN highway = 'bus_stop' OR public_transport IN ('platform', 'stop_position') THEN 2
-					ELSE 3
+					WHEN railway IN ('station', 'halt') THEN 2
+					WHEN railway = 'tram_stop' THEN 3
+					WHEN highway = 'bus_stop' OR public_transport IN ('platform', 'stop_position') THEN 4
+					ELSE 5
 				END AS priority_rank
 			FROM %s, search_point sp
 			WHERE name IS NOT NULL AND name != ''
@@ -1206,38 +1206,18 @@ func (r *transportRepository) GetNearestTransportByPriority(
 			  )
 			ORDER BY normalized_name, distance
 		),
-		-- Высокоприоритетные станции (metro/train)
-		high_priority AS (
-			SELECT station_id, name, name_en, transport_type, lat, lon, distance, priority_rank,
-				   ROW_NUMBER() OVER (ORDER BY distance) AS rn
+		-- Единый ранжированный подход: metro > train > tram > bus, внутри ранга по расстоянию
+		ranked_stations AS (
+			SELECT *,
+				ROW_NUMBER() OVER (
+					ORDER BY priority_rank ASC, distance ASC
+				) AS global_rank
 			FROM all_stations
-			WHERE priority_rank = 1
-		),
-		-- Низкоприоритетные станции (tram/bus)
-		low_priority AS (
-			SELECT station_id, name, name_en, transport_type, lat, lon, distance, priority_rank,
-				   ROW_NUMBER() OVER (ORDER BY distance) AS rn
-			FROM all_stations
-			WHERE priority_rank = 2
-		),
-		-- Количество высокоприоритетных
-		high_count AS (
-			SELECT COUNT(*) AS cnt FROM high_priority WHERE rn <= $4
-		),
-		-- Объединяем: сначала все high_priority до лимита, потом low_priority чтобы добить до лимита
-		combined AS (
-			SELECT station_id, name, name_en, transport_type, lat, lon, distance, priority_rank, rn
-			FROM high_priority
-			WHERE rn <= $4
-			UNION ALL
-			SELECT station_id, name, name_en, transport_type, lat, lon, distance, priority_rank, rn + (SELECT cnt FROM high_count)
-			FROM low_priority
-			WHERE rn <= $4 - (SELECT cnt FROM high_count)
 		)
 		SELECT station_id, name, name_en, transport_type, lat, lon, distance
-		FROM combined
+		FROM ranked_stations
+		WHERE global_rank <= $4
 		ORDER BY priority_rank, distance
-		LIMIT $4
 	`, SRID4326, planetPointTable)
 
 	rows, err := r.db.QueryxContext(ctx, query, lon, lat, radiusM, limit)
@@ -1340,10 +1320,10 @@ func (r *transportRepository) GetNearestTransportByPriorityBatch(
 				LOWER(REGEXP_REPLACE(COALESCE(p.name, ''), '[^a-zA-Zа-яА-Я0-9]', '', 'g')) AS normalized_name,
 				CASE 
 					WHEN p.railway = 'station' AND (p.tags->'station' = 'subway' OR p.tags->'subway' = 'yes') THEN 1
-					WHEN p.railway IN ('station', 'halt') THEN 1
-					WHEN p.railway = 'tram_stop' THEN 2
-					WHEN p.highway = 'bus_stop' OR p.public_transport IN ('platform', 'stop_position') THEN 2
-					ELSE 3
+					WHEN p.railway IN ('station', 'halt') THEN 2
+					WHEN p.railway = 'tram_stop' THEN 3
+					WHEN p.highway = 'bus_stop' OR p.public_transport IN ('platform', 'stop_position') THEN 4
+					ELSE 5
 				END AS priority_rank
 			FROM %s p
 			CROSS JOIN search_points sp
@@ -1362,42 +1342,18 @@ func (r *transportRepository) GetNearestTransportByPriorityBatch(
 			  )
 			ORDER BY sp.point_idx, normalized_name, distance
 		),
-		-- Высокоприоритетные станции для каждой точки
-		high_priority AS (
-			SELECT point_idx, station_id, name, name_en, transport_type, lat, lon, distance, priority_rank,
-				   ROW_NUMBER() OVER (PARTITION BY point_idx ORDER BY distance) AS rn
+		-- Единый ранжированный подход: metro(1) > train(2) > tram(3) > bus(4), внутри ранга по расстоянию
+		ranked_stations AS (
+			SELECT *,
+				ROW_NUMBER() OVER (
+					PARTITION BY point_idx
+					ORDER BY priority_rank ASC, distance ASC
+				) AS global_rank
 			FROM all_stations
-			WHERE priority_rank = 1
-		),
-		-- Низкоприоритетные станции для каждой точки
-		low_priority AS (
-			SELECT point_idx, station_id, name, name_en, transport_type, lat, lon, distance, priority_rank,
-				   ROW_NUMBER() OVER (PARTITION BY point_idx ORDER BY distance) AS rn
-			FROM all_stations
-			WHERE priority_rank = 2
-		),
-		-- Количество высокоприоритетных для каждой точки
-		high_counts AS (
-			SELECT point_idx, COUNT(*) AS cnt 
-			FROM high_priority 
-			WHERE rn <= $2 
-			GROUP BY point_idx
-		),
-		-- Объединяем с заполнением до лимита
-		combined AS (
-			SELECT point_idx, station_id, name, name_en, transport_type, lat, lon, distance, priority_rank, rn
-			FROM high_priority
-			WHERE rn <= $2
-			UNION ALL
-			SELECT lp.point_idx, lp.station_id, lp.name, lp.name_en, lp.transport_type, lp.lat, lp.lon, lp.distance, lp.priority_rank, 
-				   lp.rn + COALESCE(hc.cnt, 0) AS rn
-			FROM low_priority lp
-			LEFT JOIN high_counts hc ON lp.point_idx = hc.point_idx
-			WHERE lp.rn <= $2 - COALESCE(hc.cnt, 0)
 		)
 		SELECT point_idx, station_id, name, name_en, transport_type, lat, lon, distance
-		FROM combined
-		WHERE rn <= $2
+		FROM ranked_stations
+		WHERE global_rank <= $2
 		ORDER BY point_idx, priority_rank, distance
 	`, valuesSQL, SRID4326, planetPointTable, SRID4326)
 
@@ -1481,7 +1437,7 @@ func (r *transportRepository) GetLinesByStationIDsBatch(
 	}
 
 	// Запрос: для каждой станции находим ближайшие линии через пространственную близость
-	// Группируем по ref чтобы убрать дубликаты направлений (L3 туда и обратно = одна линия L3)
+	// Только линии с ref (короткий идентификатор: L1, S2, T3 и т.д.) — линии без ref дублируют с длинными описательными именами
 	// Используем way (SRID 3857) для быстрого пространственного поиска через индекс planet_osm_line_way_idx
 	// 100 единиц в SRID 3857 ≈ 100 метров (Web Mercator в метрах)
 	query := fmt.Sprintf(`
@@ -1491,18 +1447,18 @@ func (r *transportRepository) GetLinesByStationIDsBatch(
 			WHERE osm_id IN (%s)
 		),
 		station_lines AS (
-			SELECT DISTINCT ON (sp.osm_id, COALESCE(NULLIF(l.ref, ''), l.name))
+			SELECT DISTINCT ON (sp.osm_id, l.ref)
 				sp.osm_id AS station_id,
 				l.osm_id AS line_id,
-				COALESCE(l.ref, l.name, '') AS name,
-				COALESCE(l.ref, '') AS ref,
+				l.ref AS name,
+				l.ref AS ref,
 				COALESCE(l.route, '') AS line_type,
 				COALESCE(l.tags->'colour', '') AS color
 			FROM station_points sp
 			JOIN %s l ON ST_DWithin(l.way, sp.way, 100)
 			WHERE l.route IN ('subway', 'light_rail', 'train', 'tram', 'bus')
-			  AND (l.ref IS NOT NULL AND l.ref != '' OR l.name IS NOT NULL AND l.name != '')
-			ORDER BY sp.osm_id, COALESCE(NULLIF(l.ref, ''), l.name), l.osm_id
+			  AND l.ref IS NOT NULL AND l.ref != ''
+			ORDER BY sp.osm_id, l.ref, l.osm_id
 		)
 		SELECT station_id, line_id, name, ref, line_type, color
 		FROM station_lines
@@ -1533,14 +1489,16 @@ func (r *transportRepository) GetLinesByStationIDsBatch(
 		if seenLines[stationID] == nil {
 			seenLines[stationID] = make(map[string]bool)
 		}
-		refKey := ref
-		if refKey == "" {
-			refKey = name
-		}
-		if seenLines[stationID][refKey] {
+
+		// Пропускаем линии без ref — это дубли с длинными описательными именами
+		if ref == "" {
 			continue
 		}
-		seenLines[stationID][refKey] = true
+
+		if seenLines[stationID][ref] {
+			continue
+		}
+		seenLines[stationID][ref] = true
 
 		lineInfo := domain.TransportLineInfo{
 			ID:   lineID,

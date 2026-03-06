@@ -262,16 +262,8 @@ func (uc *TransportUseCase) GetNearestTransportByPriority(
 		return nil, err
 	}
 
-	// Определяем тип приоритета
-	hasHighPriority := false
-	priorityType := "bus/tram"
-	for _, s := range stations {
-		if s.Type == "metro" || s.Type == "train" {
-			hasHighPriority = true
-			priorityType = "metro/train"
-			break
-		}
-	}
+	// Определяем тип приоритета (4-уровневая система)
+	hasHighPriority, priorityType := DeterminePriorityMeta(stations)
 
 	// Преобразуем в DTO с расчётом времени ходьбы
 	walkingSpeedKmH := uc.walkingSpeedMps * 3.6 // м/с -> км/ч
@@ -425,4 +417,43 @@ func (uc *TransportUseCase) GetNearestTransportByPriorityBatch(
 			WalkingSpeedKmH: walkingSpeedKmH,
 		},
 	}, nil
+}
+
+// DeterminePriorityMeta определяет наивысший приоритет среди станций и возвращает
+// hasHighPriority (true если metro или train) и label наивысшего приоритета.
+func DeterminePriorityMeta(stations []domain.NearestTransportWithLines) (bool, string) {
+	highestPriority := domain.TransportPriorityUnknown
+
+	for _, s := range stations {
+		switch s.Type {
+		case domain.TransportTypeMetro:
+			if domain.TransportPriorityMetro < highestPriority {
+				highestPriority = domain.TransportPriorityMetro
+			}
+		case domain.TransportTypeTrain, domain.TransportTypeCercania:
+			if domain.TransportPriorityTrain < highestPriority {
+				highestPriority = domain.TransportPriorityTrain
+			}
+		case domain.TransportTypeTram:
+			if domain.TransportPriorityTram < highestPriority {
+				highestPriority = domain.TransportPriorityTram
+			}
+		case domain.TransportTypeBus:
+			if domain.TransportPriorityBus < highestPriority {
+				highestPriority = domain.TransportPriorityBus
+			}
+		}
+	}
+
+	hasHigh := highestPriority <= domain.TransportPriorityTrain
+
+	priorityLabels := map[int]string{
+		domain.TransportPriorityMetro:   "metro",
+		domain.TransportPriorityTrain:   "train",
+		domain.TransportPriorityTram:    "tram",
+		domain.TransportPriorityBus:     "bus",
+		domain.TransportPriorityUnknown: "unknown",
+	}
+
+	return hasHigh, priorityLabels[highestPriority]
 }
