@@ -60,7 +60,7 @@ func TestTransportUseCase_GetNearestTransportByPriority(t *testing.T) {
 		assert.Equal(t, "Catalunya", resp.Stations[0].Name)
 		assert.Equal(t, "metro", resp.Stations[0].Type)
 		assert.True(t, resp.Meta.HasHighPriority)
-		assert.Equal(t, "metro/train", resp.Meta.PriorityType)
+		assert.Equal(t, "metro", resp.Meta.PriorityType)
 
 		mockTransportRepo.AssertExpectations(t)
 	})
@@ -98,7 +98,7 @@ func TestTransportUseCase_GetNearestTransportByPriority(t *testing.T) {
 		assert.NotNil(t, resp)
 		assert.Len(t, resp.Stations, 1)
 		assert.False(t, resp.Meta.HasHighPriority)
-		assert.Equal(t, "bus/tram", resp.Meta.PriorityType)
+		assert.Equal(t, "bus", resp.Meta.PriorityType)
 
 		mockTransportRepo2.AssertExpectations(t)
 	})
@@ -285,4 +285,41 @@ func TestTransportUseCase_GetNearestTransportByPriorityBatch(t *testing.T) {
 
 		mockTransportRepo2.AssertExpectations(t)
 	})
+}
+
+func TestDeterminePriorityMeta(t *testing.T) {
+	tests := []struct {
+		name     string
+		types    []string
+		wantHigh bool
+		wantType string
+	}{
+		{"metro only", []string{"metro"}, true, "metro"},
+		{"train only", []string{"train"}, true, "train"},
+		{"cercania only", []string{"cercania"}, true, "train"},
+		{"tram only", []string{"tram"}, false, "tram"},
+		{"bus only", []string{"bus"}, false, "bus"},
+		{"metro + bus", []string{"bus", "metro"}, true, "metro"},
+		{"train + tram", []string{"tram", "train"}, true, "train"},
+		{"tram + bus", []string{"tram", "bus"}, false, "tram"},
+		{"empty stations", []string{}, false, "unknown"},
+		{"all types", []string{"bus", "tram", "train", "metro"}, true, "metro"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stations := make([]domain.NearestTransportWithLines, len(tt.types))
+			for i, tp := range tt.types {
+				stations[i] = domain.NearestTransportWithLines{
+					StationID: int64(i + 1),
+					Name:      "Station " + tp,
+					Type:      tp,
+				}
+			}
+
+			hasHigh, priorityType := usecase.DeterminePriorityMeta(stations)
+			assert.Equal(t, tt.wantHigh, hasHigh, "hasHighPriority mismatch")
+			assert.Equal(t, tt.wantType, priorityType, "priorityType mismatch")
+		})
+	}
 }

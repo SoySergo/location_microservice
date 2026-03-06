@@ -12,6 +12,15 @@ const (
 	TransportTypeTrain        = "train" // Generic train type (existing in DB)
 )
 
+// Transport priority constants (lower value = higher priority)
+const (
+	TransportPriorityMetro   = 1
+	TransportPriorityTrain   = 2
+	TransportPriorityTram    = 3
+	TransportPriorityBus     = 4
+	TransportPriorityUnknown = 5
+)
+
 // Transport type mapping for OSM data
 var OSMTagToTransportType = map[string]map[string]string{
 	"railway": {
