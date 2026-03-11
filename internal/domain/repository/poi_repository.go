@@ -41,4 +41,7 @@ type POIRepository interface {
 	// GetPOIInBBox возвращает POI в видимой области карты (bbox) с фильтрацией по категориям.
 	// Используется для сайдбара debug explorer.
 	GetPOIInBBox(ctx context.Context, swLat, swLon, neLat, neLon float64, categories, subcategories []string, limit, offset int) ([]*domain.POI, int, error)
+
+	// CountByCategories возвращает количество POI по категориям в заданном радиусе от точки
+	CountByCategories(ctx context.Context, lat, lon float64, radiusMeters int) (map[string]int, error)
 }

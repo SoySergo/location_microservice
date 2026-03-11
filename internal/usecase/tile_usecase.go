@@ -20,7 +20,8 @@ type TileUseCase struct {
 	poiRepo         repository.POIRepository
 	cacheRepo       repository.CacheRepository
 	logger          *zap.Logger
-	tileCacheTTL    time.Duration
+	tileCacheTTL         time.Duration
+	boundaryTileCacheTTL time.Duration
 }
 
 func NewTileUseCase(
@@ -32,14 +33,21 @@ func NewTileUseCase(
 	logger *zap.Logger,
 	tileCacheTTL time.Duration,
 ) *TileUseCase {
+	// Boundary tiles кешируются на 24 часа, т.к. административные границы меняются крайне редко
+	boundaryTTL := 24 * time.Hour
+	if tileCacheTTL > boundaryTTL {
+		boundaryTTL = tileCacheTTL
+	}
+
 	return &TileUseCase{
-		boundaryRepo:    boundaryRepo,
-		transportRepo:   transportRepo,
-		environmentRepo: environmentRepo,
-		poiRepo:         poiRepo,
-		cacheRepo:       cacheRepo,
-		logger:          logger,
-		tileCacheTTL:    tileCacheTTL,
+		boundaryRepo:         boundaryRepo,
+		transportRepo:        transportRepo,
+		environmentRepo:      environmentRepo,
+		poiRepo:              poiRepo,
+		cacheRepo:            cacheRepo,
+		logger:               logger,
+		tileCacheTTL:         tileCacheTTL,
+		boundaryTileCacheTTL: boundaryTTL,
 	}
 }
 
@@ -73,8 +81,8 @@ func (uc *TileUseCase) GetBoundaryTile(ctx context.Context, z, x, y int) ([]byte
 		zap.Int("y", y),
 		zap.Int("size", len(tile)))
 
-	// Cache tile
-	if err := uc.cacheRepo.Set(ctx, cacheKey, tile, uc.tileCacheTTL); err != nil {
+	// Cache tile — boundaries кешируются дольше, т.к. меняются редко
+	if err := uc.cacheRepo.Set(ctx, cacheKey, tile, uc.boundaryTileCacheTTL); err != nil {
 		uc.logger.Warn("Failed to cache tile", zap.String("key", cacheKey), zap.Error(err))
 	}
 

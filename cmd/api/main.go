@@ -156,6 +156,9 @@ func main() {
 	// EnrichedLocationUseCase - для полного обогащения локаций
 	enrichedLocationUC := usecase.NewEnrichedLocationUseCase(searchUC, transportUC, log)
 
+	// NearbyUseCase — для получения данных поблизости по категории
+	nearbyUC := usecase.NewNearbyUseCase(transportUC, poiUC, log)
+
 	log.Info("Use cases initialized")
 
 	// 8. Initialize HTTP Handlers
@@ -167,6 +170,7 @@ func main() {
 	statsHandler := handler.NewStatsHandler(statsUC, log)
 	enrichedLocationHandler := handler.NewEnrichedLocationHandler(enrichedLocationUC, log)
 	viewportHandler := handler.NewViewportHandler(transportRepo, poiRepo, log)
+	nearbyHandler := handler.NewNearbyHandler(nearbyUC, log)
 
 	log.Info("HTTP handlers initialized")
 
@@ -182,6 +186,7 @@ func main() {
 		statsHandler,
 		enrichedLocationHandler,
 		viewportHandler,
+		nearbyHandler,
 	)
 
 	log.Info("HTTP server initialized")
