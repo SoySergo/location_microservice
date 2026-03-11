@@ -156,6 +156,9 @@ func main() {
 	// EnrichedLocationUseCase - для полного обогащения локаций
 	enrichedLocationUC := usecase.NewEnrichedLocationUseCase(searchUC, transportUC, log)
 
+	// PropertyLocationUseCase - для агрегированных данных локации объекта
+	propertyLocationUC := usecase.NewPropertyLocationUseCase(transportUC, poiRepo, environmentRepo, log)
+
 	log.Info("Use cases initialized")
 
 	// 8. Initialize HTTP Handlers
@@ -167,6 +170,7 @@ func main() {
 	statsHandler := handler.NewStatsHandler(statsUC, log)
 	enrichedLocationHandler := handler.NewEnrichedLocationHandler(enrichedLocationUC, log)
 	viewportHandler := handler.NewViewportHandler(transportRepo, poiRepo, log)
+	propertyLocationHandler := handler.NewPropertyLocationHandler(propertyLocationUC, log)
 
 	log.Info("HTTP handlers initialized")
 
@@ -182,6 +186,7 @@ func main() {
 		statsHandler,
 		enrichedLocationHandler,
 		viewportHandler,
+		propertyLocationHandler,
 	)
 
 	log.Info("HTTP server initialized")

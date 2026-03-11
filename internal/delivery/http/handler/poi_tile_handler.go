@@ -89,9 +89,6 @@ func (h *POITileHandler) GetPOITile(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate tile"})
 	}
 
-	// Устанавливаем заголовки
-	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Cache-Control", "public, max-age=3600")
-
-	return c.Send(tile)
+	// Устанавливаем заголовки и отправляем тайл
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeTiles)
 }

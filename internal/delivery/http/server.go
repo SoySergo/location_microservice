@@ -29,6 +29,7 @@ type Server struct {
 	apiExplorerHandler      *handler.APIExplorerHandler
 	enrichedLocationHandler *handler.EnrichedLocationHandler
 	viewportHandler         *handler.ViewportHandler
+	propertyLocationHandler *handler.PropertyLocationHandler
 }
 
 // NewServer - создание нового HTTP сервера
@@ -43,6 +44,7 @@ func NewServer(
 	statsHandler *handler.StatsHandler,
 	enrichedLocationHandler *handler.EnrichedLocationHandler,
 	viewportHandler *handler.ViewportHandler,
+	propertyLocationHandler *handler.PropertyLocationHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
 		AppName:      "Location Microservice",
@@ -71,6 +73,7 @@ func NewServer(
 		apiExplorerHandler:      apiExplorerHandler,
 		enrichedLocationHandler: enrichedLocationHandler,
 		viewportHandler:         viewportHandler,
+		propertyLocationHandler: propertyLocationHandler,
 	}
 
 	s.setupMiddlewares()
@@ -142,6 +145,9 @@ func (s *Server) setupRoutes() {
 	api.Post("/radius/poi", s.poiHandler.SearchByRadius)
 	api.Get("/poi/categories", s.poiHandler.GetCategories)
 	api.Get("/poi/categories/:id/subcategories", s.poiHandler.GetSubcategories)
+
+	// Property Location — агрегированные данные для страницы деталей объекта
+	api.Get("/property-location", s.propertyLocationHandler.GetPropertyLocation)
 
 	// POI Tile routes - новые эндпоинты
 	api.Get("/tiles/poi/:z/:x/:y.pbf", s.poiTileHandler.GetPOITile)

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/md5"
+	"fmt"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,6 +11,33 @@ import (
 	"github.com/location-microservice/internal/usecase"
 	"github.com/location-microservice/internal/usecase/dto"
 	"go.uber.org/zap"
+)
+
+// sendTile отправляет тайл-данные клиенту с правильными HTTP заголовками:
+// Content-Type, Cache-Control, Access-Control-Allow-Origin, ETag/If-None-Match.
+func sendTile(c *fiber.Ctx, tile []byte, contentType string, maxAge int) error {
+	etag := fmt.Sprintf(`"%x"`, md5.Sum(tile))
+	if c.Get("If-None-Match") == etag {
+		return c.SendStatus(fiber.StatusNotModified)
+	}
+
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAge))
+	c.Set("ETag", etag)
+	c.Set("Access-Control-Allow-Origin", "*")
+	return c.Send(tile)
+}
+
+const (
+	contentTypePBF = "application/x-protobuf"
+	contentTypeMVT = "application/vnd.mapbox-vector-tile"
+
+	// cacheMaxAgeTiles — стандартное время кеширования тайлов (1 час)
+	cacheMaxAgeTiles = 3600
+	// cacheMaxAgeBoundaries — время кеширования тайлов границ (24 часа), т.к. данные меняются редко
+	cacheMaxAgeBoundaries = 86400
+	// cacheMaxAgeEnvironment — время кеширования тайлов окружения (24 часа)
+	cacheMaxAgeEnvironment = 86400
 )
 
 // TileHandler - обработчик для запросов векторных тайлов
@@ -66,9 +95,7 @@ func (h *TileHandler) GetBoundaryTile(c *fiber.Ctx) error {
 			zap.Int("size", len(tile)))
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	// c.Set("Content-Encoding", "gzip")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeBoundaries)
 }
 
 // GetTransportTile godoc
@@ -93,8 +120,7 @@ func (h *TileHandler) GetTransportTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeTiles)
 }
 
 // GetGreenSpacesTile godoc
@@ -119,8 +145,7 @@ func (h *TileHandler) GetGreenSpacesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeEnvironment)
 }
 
 // GetWaterTile godoc
@@ -146,9 +171,7 @@ func (h *TileHandler) GetWaterTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Cache-Control", "public, max-age=86400")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeEnvironment)
 }
 
 // GetBeachesTile godoc
@@ -180,9 +203,7 @@ func (h *TileHandler) GetBeachesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Cache-Control", "public, max-age=86400")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeEnvironment)
 }
 
 // GetNoiseSourcesTile godoc
@@ -208,9 +229,7 @@ func (h *TileHandler) GetNoiseSourcesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Cache-Control", "public, max-age=86400")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeEnvironment)
 }
 
 // GetTouristZonesTile godoc
@@ -242,9 +261,7 @@ func (h *TileHandler) GetTouristZonesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/x-protobuf")
-	c.Set("Cache-Control", "public, max-age=86400")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypePBF, cacheMaxAgeEnvironment)
 }
 
 // GetTransportLineTile godoc
@@ -274,8 +291,7 @@ func (h *TileHandler) GetTransportLineTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypeMVT, cacheMaxAgeTiles)
 }
 
 // GetTransportLinesTile godoc
@@ -324,8 +340,7 @@ func (h *TileHandler) GetTransportLinesTile(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypeMVT, cacheMaxAgeTiles)
 }
 
 // GetRadiusTiles godoc
@@ -360,7 +375,5 @@ func (h *TileHandler) GetRadiusTiles(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to generate tile")
 	}
 
-	c.Set("Content-Type", "application/vnd.mapbox-vector-tile")
-	c.Set("Cache-Control", "public, max-age=3600")
-	return c.Send(tile)
+	return sendTile(c, tile, contentTypeMVT, cacheMaxAgeTiles)
 }

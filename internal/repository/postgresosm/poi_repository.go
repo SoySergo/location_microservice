@@ -782,3 +782,40 @@ func (r *poiRepository) GetPOIInBBox(
 
 	return pois, total, nil
 }
+
+// CountByCategories возвращает количество POI по категориям приложения в заданном радиусе
+func (r *poiRepository) CountByCategories(ctx context.Context, lat, lon float64, radiusMeters int) (map[string]int, error) {
+	query := fmt.Sprintf(`
+		WITH point AS (
+			SELECT ST_SetSRID(ST_MakePoint($1, $2), %d)::geography AS geom
+		)
+		SELECT
+			%s AS category,
+			COUNT(*) AS cnt
+		FROM %s, point
+		WHERE ST_DWithin(ST_Transform(way, %d)::geography, point.geom, $3)
+		  AND (%s) != 'other'
+		GROUP BY category
+		ORDER BY cnt DESC
+	`, SRID4326, tileCategoryExpr, planetPointTable, SRID4326, tileCategoryExpr)
+
+	rows, err := r.db.QueryxContext(ctx, query, lon, lat, radiusMeters)
+	if err != nil {
+		r.logger.Error("failed to count POI by categories", zap.Error(err))
+		return nil, pkgerrors.ErrDatabaseError
+	}
+	defer rows.Close()
+
+	result := make(map[string]int)
+	for rows.Next() {
+		var category string
+		var count int
+		if err := rows.Scan(&category, &count); err != nil {
+			r.logger.Error("failed to scan category count", zap.Error(err))
+			continue
+		}
+		result[category] = count
+	}
+
+	return result, nil
+}
