@@ -42,7 +42,7 @@ func (h *PropertyLocationHandler) GetPropertyLocation(c *fiber.Ctx) error {
 	lon := c.QueryFloat("lon", 0)
 	radius := c.QueryInt("radius", 0)
 
-	if lat == 0 && lon == 0 {
+	if lat == 0 || lon == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "lat and lon are required"})
 	}
 
