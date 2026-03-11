@@ -156,8 +156,8 @@ func main() {
 	// EnrichedLocationUseCase - для полного обогащения локаций
 	enrichedLocationUC := usecase.NewEnrichedLocationUseCase(searchUC, transportUC, log)
 
-	// PropertyLocationUseCase - для агрегированных данных локации объекта
-	propertyLocationUC := usecase.NewPropertyLocationUseCase(transportUC, poiRepo, environmentRepo, log)
+	// NearbyUseCase — для получения данных поблизости по категории
+	nearbyUC := usecase.NewNearbyUseCase(transportUC, poiUC, log)
 
 	log.Info("Use cases initialized")
 
@@ -170,7 +170,7 @@ func main() {
 	statsHandler := handler.NewStatsHandler(statsUC, log)
 	enrichedLocationHandler := handler.NewEnrichedLocationHandler(enrichedLocationUC, log)
 	viewportHandler := handler.NewViewportHandler(transportRepo, poiRepo, log)
-	propertyLocationHandler := handler.NewPropertyLocationHandler(propertyLocationUC, log)
+	nearbyHandler := handler.NewNearbyHandler(nearbyUC, log)
 
 	log.Info("HTTP handlers initialized")
 
@@ -186,7 +186,7 @@ func main() {
 		statsHandler,
 		enrichedLocationHandler,
 		viewportHandler,
-		propertyLocationHandler,
+		nearbyHandler,
 	)
 
 	log.Info("HTTP server initialized")
