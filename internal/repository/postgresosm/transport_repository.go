@@ -786,7 +786,16 @@ func (r *transportRepository) GetLinesByStationID(ctx context.Context, stationID
 		)
 		SELECT osm_id, ref, color, route_type
 		FROM lines_nearby
-		ORDER BY ref
+		ORDER BY
+			CASE route_type
+				WHEN 'subway' THEN 1
+				WHEN 'light_rail' THEN 2
+				WHEN 'train' THEN 3
+				WHEN 'tram' THEN 4
+				WHEN 'bus' THEN 5
+				ELSE 6
+			END,
+			ref
 		LIMIT %d
 	`, planetPointTable, planetLineTable, LimitLines)
 
@@ -1462,7 +1471,16 @@ func (r *transportRepository) GetLinesByStationIDsBatch(
 		)
 		SELECT station_id, line_id, name, ref, line_type, color
 		FROM station_lines
-		ORDER BY station_id, ref
+		ORDER BY station_id,
+			CASE line_type
+				WHEN 'subway' THEN 1
+				WHEN 'light_rail' THEN 2
+				WHEN 'train' THEN 3
+				WHEN 'tram' THEN 4
+				WHEN 'bus' THEN 5
+				ELSE 6
+			END,
+			ref
 	`, planetPointTable, strings.Join(placeholders, ","), planetLineTable)
 
 	rows, err := r.db.QueryxContext(ctx, query, args...)
