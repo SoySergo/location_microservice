@@ -159,6 +159,43 @@ func (uc *POIUseCase) GetPOIRadiusTile(
 	return tile, nil
 }
 
+// GetPOIInBBox возвращает POI в видимой области карты (bbox) с пагинацией
+func (uc *POIUseCase) GetPOIInBBox(ctx context.Context, req dto.BBoxPOIRequest) (*dto.BBoxPOIResponse, error) {
+	// Validate coordinates
+	if !utils.ValidateCoordinates(req.SwLat, req.SwLon) || !utils.ValidateCoordinates(req.NeLat, req.NeLon) {
+		return nil, errors.ErrInvalidCoordinates
+	}
+
+	// Defaults
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+
+	pois, total, err := uc.poiRepo.GetPOIInBBox(ctx, req.SwLat, req.SwLon, req.NeLat, req.NeLon, req.Categories, req.Subcategories, req.Limit, req.Offset)
+	if err != nil {
+		uc.logger.Error("Failed to get POI in bbox", zap.Error(err))
+		return nil, err
+	}
+
+	items := make([]dto.POIDetailed, 0, len(pois))
+	for _, p := range pois {
+		items = append(items, dto.ConvertPOIDetailed(p))
+	}
+
+	return &dto.BBoxPOIResponse{
+		POIs:   items,
+		Total:  total,
+		Limit:  req.Limit,
+		Offset: req.Offset,
+	}, nil
+}
+
 // GetPOIByBoundaryTile генерирует MVT тайл с POI внутри административной границы
 func (uc *POIUseCase) GetPOIByBoundaryTile(
 	ctx context.Context,

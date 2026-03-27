@@ -457,3 +457,40 @@ func DeterminePriorityMeta(stations []domain.NearestTransportWithLines) (bool, s
 
 	return hasHigh, priorityLabels[highestPriority]
 }
+
+// GetTransportInBBox возвращает транспортные станции в видимой области карты (bbox) с пагинацией
+func (uc *TransportUseCase) GetTransportInBBox(ctx context.Context, req dto.BBoxTransportRequest) (*dto.BBoxTransportResponse, error) {
+// Validate coordinates
+if !utils.ValidateCoordinates(req.SwLat, req.SwLon) || !utils.ValidateCoordinates(req.NeLat, req.NeLon) {
+return nil, errors.ErrInvalidCoordinates
+}
+
+// Defaults
+if req.Limit <= 0 {
+req.Limit = 10
+}
+if req.Limit > 100 {
+req.Limit = 100
+}
+if req.Offset < 0 {
+req.Offset = 0
+}
+
+stations, total, err := uc.transportRepo.GetStationsInBBox(ctx, req.SwLat, req.SwLon, req.NeLat, req.NeLon, req.Types, req.Limit, req.Offset)
+if err != nil {
+uc.logger.Error("Failed to get transport in bbox", zap.Error(err))
+return nil, err
+}
+
+items := make([]dto.BBoxTransportStation, 0, len(stations))
+for _, s := range stations {
+items = append(items, dto.ConvertBBoxTransportStation(s))
+}
+
+return &dto.BBoxTransportResponse{
+Stations: items,
+Total:    total,
+Limit:    req.Limit,
+Offset:   req.Offset,
+}, nil
+}

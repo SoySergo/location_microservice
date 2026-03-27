@@ -990,7 +990,7 @@ async function loadViewportTransport(append) {
     if (types.length > 0) params.set('types', types.join(','));
 
     try {
-        const resp = await fetch(`${API}/viewport/transport?${params}`);
+        const resp = await fetch(`${API}/transport/bbox?${params}`);
         const data = await resp.json();
 
         if (data.data) {
@@ -1054,7 +1054,7 @@ async function loadViewportPOI(append) {
     if (subs.length > 0) params.set('subcategories', subs.join(','));
 
     try {
-        const resp = await fetch(`${API}/viewport/poi?${params}`);
+        const resp = await fetch(`${API}/poi/bbox?${params}`);
         const data = await resp.json();
 
         if (data.data) {

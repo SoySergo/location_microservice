@@ -207,3 +207,67 @@ func (h *TransportHandler) GetLinesByStationID(c *fiber.Ctx) error {
 		"lines": result,
 	})
 }
+
+// GetTransportInBBox godoc
+// @Summary Получение транспортных станций в видимой области карты (bbox)
+// @Description Возвращает транспортные станции с линиями в указанном прямоугольнике карты с пагинацией. Поддерживает фильтрацию по типам транспорта.
+// @Tags Transport
+// @Accept json
+// @Produce json
+// @Param sw_lat query number true "Широта юго-западного угла"
+// @Param sw_lon query number true "Долгота юго-западного угла"
+// @Param ne_lat query number true "Широта северо-восточного угла"
+// @Param ne_lon query number true "Долгота северо-восточного угла"
+// @Param types query string false "Типы транспорта через запятую (metro,bus,tram,train)"
+// @Param limit query int false "Лимит результатов (по умолчанию 10, максимум 100)"
+// @Param offset query int false "Смещение для пагинации"
+// @Success 200 {object} utils.SuccessResponse{data=dto.BBoxTransportResponse}
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /api/v1/transport/bbox [get]
+func (h *TransportHandler) GetTransportInBBox(c *fiber.Ctx) error {
+swLat, err := strconv.ParseFloat(c.Query("sw_lat"), 64)
+if err != nil {
+return c.Status(400).JSON(fiber.Map{"error": "invalid sw_lat"})
+}
+swLon, err := strconv.ParseFloat(c.Query("sw_lon"), 64)
+if err != nil {
+return c.Status(400).JSON(fiber.Map{"error": "invalid sw_lon"})
+}
+neLat, err := strconv.ParseFloat(c.Query("ne_lat"), 64)
+if err != nil {
+return c.Status(400).JSON(fiber.Map{"error": "invalid ne_lat"})
+}
+neLon, err := strconv.ParseFloat(c.Query("ne_lon"), 64)
+if err != nil {
+return c.Status(400).JSON(fiber.Map{"error": "invalid ne_lon"})
+}
+
+limit, _ := strconv.Atoi(c.Query("limit", "10"))
+offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+var types []string
+if t := c.Query("types", ""); t != "" {
+types = strings.Split(t, ",")
+for i := range types {
+types[i] = strings.TrimSpace(types[i])
+}
+}
+
+req := dto.BBoxTransportRequest{
+SwLat:  swLat,
+SwLon:  swLon,
+NeLat:  neLat,
+NeLon:  neLon,
+Types:  types,
+Limit:  limit,
+Offset: offset,
+}
+
+result, err := h.transportUC.GetTransportInBBox(c.Context(), req)
+if err != nil {
+return utils.SendError(c, err)
+}
+
+return utils.SendSuccess(c, result, &utils.Meta{Total: result.Total})
+}

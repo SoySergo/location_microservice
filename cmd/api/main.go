@@ -169,7 +169,6 @@ func main() {
 	poiTileHandler := handler.NewPOITileHandler(poiTileUC, log)
 	statsHandler := handler.NewStatsHandler(statsUC, log)
 	enrichedLocationHandler := handler.NewEnrichedLocationHandler(enrichedLocationUC, log)
-	viewportHandler := handler.NewViewportHandler(transportRepo, poiRepo, log)
 	nearbyHandler := handler.NewNearbyHandler(nearbyUC, log)
 
 	log.Info("HTTP handlers initialized")
@@ -185,7 +184,6 @@ func main() {
 		poiTileHandler,
 		statsHandler,
 		enrichedLocationHandler,
-		viewportHandler,
 		nearbyHandler,
 	)
 
