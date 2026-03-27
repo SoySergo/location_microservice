@@ -28,7 +28,6 @@ type Server struct {
 	statsHandler            *handler.StatsHandler
 	apiExplorerHandler      *handler.APIExplorerHandler
 	enrichedLocationHandler *handler.EnrichedLocationHandler
-	viewportHandler         *handler.ViewportHandler
 	nearbyHandler           *handler.NearbyHandler
 }
 
@@ -43,7 +42,6 @@ func NewServer(
 	poiTileHandler *handler.POITileHandler,
 	statsHandler *handler.StatsHandler,
 	enrichedLocationHandler *handler.EnrichedLocationHandler,
-	viewportHandler *handler.ViewportHandler,
 	nearbyHandler *handler.NearbyHandler,
 ) *Server {
 	app := fiber.New(fiber.Config{
@@ -72,7 +70,6 @@ func NewServer(
 		statsHandler:            statsHandler,
 		apiExplorerHandler:      apiExplorerHandler,
 		enrichedLocationHandler: enrichedLocationHandler,
-		viewportHandler:         viewportHandler,
 		nearbyHandler:           nearbyHandler,
 	}
 
@@ -135,6 +132,7 @@ func (s *Server) setupRoutes() {
 
 	// Transport routes
 	api.Post("/transport/nearest", s.transportHandler.GetNearestStations)
+	api.Get("/transport/bbox", s.transportHandler.GetTransportInBBox)
 	api.Get("/transport/tiles/:z/:x/:y.pbf", s.tileHandler.GetTransportTile)
 	api.Post("/batch/transport/nearest", s.transportHandler.BatchGetNearestStations)
 	api.Get("/transport/lines/:id.pbf", s.tileHandler.GetTransportLineTile)
@@ -145,6 +143,7 @@ func (s *Server) setupRoutes() {
 	api.Post("/radius/poi", s.poiHandler.SearchByRadius)
 	api.Get("/poi/categories", s.poiHandler.GetCategories)
 	api.Get("/poi/categories/:id/subcategories", s.poiHandler.GetSubcategories)
+	api.Get("/poi/bbox", s.poiHandler.GetPOIInBBox)
 
 	// Nearby — данные поблизости по категории (transport, schools, medical, ...)
 	api.Get("/nearby/:category", s.nearbyHandler.GetNearby)
@@ -184,10 +183,6 @@ func (s *Server) setupRoutes() {
 
 	// Stats
 	api.Get("/stats", s.statsHandler.GetStatistics)
-
-	// Viewport data for debug explorer sidebar
-	api.Get("/viewport/transport", s.viewportHandler.GetTransportInViewport)
-	api.Get("/viewport/poi", s.viewportHandler.GetPOIInViewport)
 }
 
 // Start - запуск HTTP сервера

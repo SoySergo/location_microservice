@@ -129,3 +129,95 @@ func ConvertPOI(poi *domain.POI, distance float64) POISimple {
 		Distance:    distance,
 	}
 }
+
+// POIDetailed — расширенная информация о POI для bbox-ответа
+type POIDetailed struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Category     string  `json:"category"`
+	Subcategory  string  `json:"subcategory"`
+	Lat          float64 `json:"lat"`
+	Lon          float64 `json:"lon"`
+	NameEn       *string `json:"name_en,omitempty"`
+	Address      *string `json:"address,omitempty"`
+	Phone        *string `json:"phone,omitempty"`
+	Website      *string `json:"website,omitempty"`
+	OpeningHours *string `json:"opening_hours,omitempty"`
+	Brand        *string `json:"brand,omitempty"`
+	Operator     *string `json:"operator,omitempty"`
+	Cuisine      *string `json:"cuisine,omitempty"`
+	Stars        *int    `json:"stars,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	Wheelchair   *bool   `json:"wheelchair,omitempty"`
+}
+
+// BBoxPOIResponse — ответ на bbox-запрос POI
+type BBoxPOIResponse struct {
+	POIs   []POIDetailed `json:"pois"`
+	Total  int           `json:"total"`
+	Limit  int           `json:"limit"`
+	Offset int           `json:"offset"`
+}
+
+// BBoxTransportStation — станция транспорта для bbox-ответа
+type BBoxTransportStation struct {
+	ID    string                `json:"id"`
+	Name  string                `json:"name"`
+	Type  string                `json:"type"`
+	Lat   float64               `json:"lat"`
+	Lon   float64               `json:"lon"`
+	Lines []TransportLineSimple `json:"lines,omitempty"`
+}
+
+// BBoxTransportResponse — ответ на bbox-запрос транспорта
+type BBoxTransportResponse struct {
+	Stations []BBoxTransportStation `json:"stations"`
+	Total    int                    `json:"total"`
+	Limit    int                    `json:"limit"`
+	Offset   int                    `json:"offset"`
+}
+
+// ConvertPOIDetailed converts domain POI to POIDetailed DTO
+func ConvertPOIDetailed(poi *domain.POI) POIDetailed {
+	return POIDetailed{
+		ID:           strconv.FormatInt(poi.OSMId, 10),
+		Name:         poi.Name,
+		Category:     poi.Category,
+		Subcategory:  poi.Subcategory,
+		Lat:          poi.Lat,
+		Lon:          poi.Lon,
+		NameEn:       poi.NameEn,
+		Address:      poi.Address,
+		Phone:        poi.Phone,
+		Website:      poi.Website,
+		OpeningHours: poi.OpeningHours,
+		Brand:        poi.Brand,
+		Operator:     poi.Operator,
+		Cuisine:      poi.Cuisine,
+		Stars:        poi.Stars,
+		Description:  poi.Description,
+		Wheelchair:   poi.Wheelchair,
+	}
+}
+
+// ConvertBBoxTransportStation converts domain TransportStationWithLines to BBoxTransportStation DTO
+func ConvertBBoxTransportStation(s domain.TransportStationWithLines) BBoxTransportStation {
+	lines := make([]TransportLineSimple, 0, len(s.Lines))
+	for _, l := range s.Lines {
+		line := TransportLineSimple{
+			ID:    strconv.FormatInt(l.ID, 10),
+			Name:  l.Name,
+			Ref:   l.Ref,
+			Color: l.Color,
+		}
+		lines = append(lines, line)
+	}
+	return BBoxTransportStation{
+		ID:    strconv.FormatInt(s.StationID, 10),
+		Name:  s.Name,
+		Type:  s.Type,
+		Lat:   s.Lat,
+		Lon:   s.Lon,
+		Lines: lines,
+	}
+}
